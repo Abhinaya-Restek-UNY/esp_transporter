@@ -12,7 +12,15 @@ template <typename T> void MotorHub::push_node(ll<T> **tail, T *new_data) {
   *tail = newNode; // Update the tail to be the new node
 }
 
-MotorHub::MotorHub(mcpwm_timer_config_t timer_config) {
+MotorHub::MotorHub(int timer_group_id, unsigned int frequency) {
+
+  mcpwm_timer_config_t timer_config = {
+      .group_id = 0,                          // MCPWM group 0
+      .clk_src = MCPWM_TIMER_CLK_SRC_DEFAULT, // Default is usually 80MHz
+      .resolution_hz = frequency * 2048, // 80MHz resolution (1 tick = 12.5ns)
+      .count_mode = MCPWM_TIMER_COUNT_MODE_UP,
+      .period_ticks = 2048, // 11-bit resolution
+  };
   this->timer_config = timer_config;
 
   ERR_CHECK(mcpwm_new_timer(&timer_config, &this->timer_handle));

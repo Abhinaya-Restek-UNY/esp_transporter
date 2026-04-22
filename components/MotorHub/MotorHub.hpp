@@ -13,7 +13,7 @@
 
 class MotorHub {
 public:
-  MotorHub(mcpwm_timer_config_t timer_conf);
+  MotorHub(int timer_group_id, unsigned int frequency);
   Motor *create_motor(gpio_num_t GPIO_A, gpio_num_t GPIO_B, gpio_num_t PWM);
 
   void start();
