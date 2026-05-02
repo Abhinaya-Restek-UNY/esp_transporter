@@ -1,34 +1,29 @@
 #ifndef PID_CONTROLLER_H
 #define PID_CONTROLLER_H
 
-#include <algorithm>
-
-class PIDController {
+class PID {
 public:
-    PIDController(double Kp, double Ki, double Kd, double T, 
-                  double tau = 0.02, 
-                  double limMin = -1024.0, double limMax = 1024.0, 
-                  double limMinInt = -300.0, double limMaxInt = 300.0);
+  PID(double Kp, double Ki, double Kd, double delta_t, double limMin,
+      double limMax, double limMinInt, double limMaxInt);
 
-    double update(double setpoint, double measurement);
+  double update(double setpoint, double measurement, double measured_velocity);
 
 private:
-    // Gains
-    double Kp, Ki, Kd;
-    
-    // Timing & Filter
-    double T, tau;
+  // Gains
+  double Kp, Ki, Kd;
 
-    // Limits
-    double limMin, limMax;
-    double limMinInt, limMaxInt;
+  // Timing & Filter
+  double delta_t;
 
-    // States
-    double integrator;
-    double prevError;
-    double differentiator;
-    double prevMeasurement;
-    double out;
+  // Limits
+  double limMin, limMax;
+  double limMinInt, limMaxInt;
+
+  // States
+  double integrator;
+  double prevError;
+  double differentiator;
+  double out;
 };
 
 #endif
