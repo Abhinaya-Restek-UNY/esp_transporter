@@ -1,6 +1,7 @@
 #include "MotorHub.hpp"
 #include "Motor.hpp"
 #include "Panic.h"
+#include "Servo.hpp"
 #include "driver/mcpwm_gen.h"
 #include "driver/mcpwm_oper.h"
 #include "driver/mcpwm_timer.h"
@@ -12,7 +13,8 @@ template <typename T> void MotorHub::push_node(ll<T> **tail, T *new_data) {
   *tail = newNode; // Update the tail to be the new node
 }
 
-MotorHub::MotorHub(int timer_group_id, unsigned int frequency) {
+MotorHub::MotorHub(int timer_group_id, unsigned int frequency)
+    : frequency(frequency) {
 
   mcpwm_timer_config_t timer_config = {
       .group_id = 0,                          // MCPWM group 0
@@ -21,6 +23,7 @@ MotorHub::MotorHub(int timer_group_id, unsigned int frequency) {
       .count_mode = MCPWM_TIMER_COUNT_MODE_UP,
       .period_ticks = 2048, // 11-bit resolution
   };
+
   this->timer_config = timer_config;
 
   ERR_CHECK(mcpwm_new_timer(&timer_config, &this->timer_handle));
@@ -33,11 +36,7 @@ void MotorHub::start() {
       mcpwm_timer_start_stop(this->timer_handle, MCPWM_TIMER_START_NO_STOP));
 }
 
-Motor *MotorHub::create_motor(gpio_num_t GPIO_A, gpio_num_t GPIO_B,
-                              gpio_num_t PWM) {
-  if (total_motor >= MAX_MOTOR) {
-    return nullptr;
-  }
+mcpwm_cmpr_handle_t MotorHub::create_pwm(gpio_num_t PWM) {
 
   mcpwm_oper_handle_t current_oper = nullptr;
 
@@ -96,11 +95,39 @@ Motor *MotorHub::create_motor(gpio_num_t GPIO_A, gpio_num_t GPIO_B,
   push_node(&last_generator, new_gen);
   total_generator++;
 
+  return new_cmpr;
+}
+
+Motor *MotorHub::create_motor(gpio_num_t GPIO_A, gpio_num_t GPIO_B,
+                              gpio_num_t PWM) {
+  if (total_motor >= MAX_MOTOR) {
+    return nullptr;
+  }
+
   // 4. Create the Motor Object
-  Motor *new_motor = new Motor(new_cmpr, GPIO_A, GPIO_B);
+  Motor *new_motor = new Motor(create_pwm(PWM), GPIO_A, GPIO_B);
 
   push_node(&last_motor, new_motor);
   total_motor++;
 
   return new_motor;
 }
+
+Servo *MotorHub::create_servo(gpio_num_t PWM, uint16_t max_angle,
+                              float min_pulse_ms, float max_pulse_ms) {
+
+  if (total_motor >= MAX_MOTOR) {
+    return nullptr;
+  }
+
+  float period = 1000.0 / this->frequency;
+  int16_t min_ticks = min_pulse_ms * 2048.0 / period;
+  int16_t max_ticks = max_pulse_ms * 2048.0 / period;
+
+  Servo *new_servo =
+      new Servo(create_pwm(PWM), max_angle, min_ticks, max_ticks);
+  push_node(&this->last_serv, new_servo);
+  total_motor++;
+
+  return new_servo;
+};
