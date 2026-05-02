@@ -53,6 +53,7 @@ int8_t IMU::start(uint8_t calibration_loop) {
 
   return status;
 }
+
 int8_t IMU::init_hardware() {
   if (this->mpu != nullptr) {
     return -1;
@@ -98,9 +99,9 @@ void IMU::set_offset_data(OffsetData offset) {
   mpu->setYGyroOffset(offset.gyro_y);
   mpu->setZGyroOffset(offset.gyro_z);
 
-  mpu->setXGyroOffset(offset.gyro_x);
-  mpu->setYGyroOffset(offset.gyro_y);
-  mpu->setZGyroOffset(offset.gyro_z);
+  mpu->setXAccelOffset(offset.accel_x);
+  mpu->setYAccelOffset(offset.accel_y);
+  mpu->setZAccelOffset(offset.accel_z);
 };
 
 IMU::OffsetData IMU::get_offset() { return this->offset; }
@@ -119,7 +120,7 @@ void IMU::get_yaw(double *yaw, double *angular_yaw, uint64_t *timestamp) {
                         this->raw_quat.x * this->raw_quat.y),
                  1.0 - 2.0 * (this->raw_quat.y * this->raw_quat.y +
                               this->raw_quat.z * this->raw_quat.z));
-    *angular_yaw = this->raw_gyro.z;
+    *angular_yaw = this->filtered_gyro_yaw / 16.4;
     *timestamp = this->last_update;
     xSemaphoreGive(this->data_mutex);
   }
@@ -132,7 +133,13 @@ void IMU::receive_packet() {
   if (xSemaphoreTake(this->data_mutex, 100) == pdTRUE) {
     mpu->dmpGetQuaternion(&raw_quat, fifoBuffer);
     mpu->dmpGetGyro(&this->raw_gyro, fifoBuffer);
+    this->filtered_gyro_yaw =
+        IMU::lpf(this->raw_gyro.z, this->filtered_gyro_yaw, this->alpha);
     this->last_update = time_us;
     xSemaphoreGive(this->data_mutex);
   }
 };
+
+double IMU::lpf(double raw, double prev, double alpha) {
+  return (alpha * raw) + (1.0 - alpha) * prev;
+}
