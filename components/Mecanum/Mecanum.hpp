@@ -1,6 +1,10 @@
-#include "IMU.hpp"
 #include "Motor.hpp"
+// #define MECANUM_WITH_IMU
+
+#ifdef MECANUM_WITH_IMU
+#include "IMU.hpp"
 #include "PID.hpp"
+#endif
 class Mecanum {
 public:
   struct PIDConf {
@@ -10,19 +14,26 @@ public:
     uint64_t delta_t;
   };
 
-  Mecanum(Motor *fr, Motor *fl, Motor *br, Motor *bl, IMU *imu,
-          PIDConf *pid_conf);
-
-  void set_angle(float yaw);
+  Mecanum(Motor *fr, Motor *fl, Motor *br, Motor *bl
+#ifdef MECANUM_WITH_IMU
+          ,
+          IMU *imu, PIDConf *pid_conf
+#endif
+  );
 
   void set_direction(int16_t x, int16_t y);
 
   void update();
 
+#ifdef MECANUM_WITH_IMU
+  void set_angle(float yaw);
+#else
+  void set_turn(double amount);
+#endif
+
 private:
   double angle_target = 0.0;
 
-  PID angle_pid;
   double power = 0.0;
 
   double hypot = 0.0;
@@ -43,5 +54,8 @@ private:
   Motor *br;
   Motor *bl;
 
+#ifdef MECANUM_WITH_IMU
   IMU *imu;
+  PID angle_pid;
+#endif
 };
