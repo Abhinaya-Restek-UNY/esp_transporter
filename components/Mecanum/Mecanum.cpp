@@ -1,18 +1,27 @@
 #include "Mecanum.hpp"
 #include <cmath>
 
+#ifdef MECANUM_WITH_IMU
 Mecanum::Mecanum(Motor *fr, Motor *fl, Motor *br, Motor *bl, IMU *imu,
                  PIDConf *pid_conf)
-    : angle_pid(pid_conf->Kp, pid_conf->Ki, pid_conf->Kp, pid_conf->delta_t,
-                -1.0, 1.0, -0.5, 0.5),
-      fr(fr), fl(fl), br(br), bl(bl), imu(imu) {
+    : fr(fr), fl(fl), br(br), bl(bl), imu(imu),
+      angle_pid(pid_conf->Kp, pid_conf->Ki, pid_conf->Kp, pid_conf->delta_t,
+                -1.0, 1.0, -0.5, 0.5) {
 
       };
+#else
+Mecanum::Mecanum(Motor *fr, Motor *fl, Motor *br, Motor *bl)
+    : fr(fr), fl(fl), br(br), bl(bl) {
 
+      };
+#endif
+
+#ifdef MECANUM_WITH_IMU
 void Mecanum::set_angle(float yaw) { this->angle_target = yaw; };
+#endif
 
 void Mecanum::set_direction(int16_t x, int16_t y) {
-  this->hypot = sqrt((double)x * x + (double)y * y);
+  this->hypot = std::hypot(x, y);
   if (this->hypot == 0.0) {
     this->power = 0.0;
     this->fl_val = 0.0;
@@ -25,7 +34,7 @@ void Mecanum::set_direction(int16_t x, int16_t y) {
   double cosval = (double)x / hypot;
   double sinval = (double)y / hypot;
 
-  this->power = hypot / 32768.0;
+  this->power = hypot / 32767.0;
   this->fl_val = (sinval + cosval) * power;
   this->fr_val = (sinval - cosval) * power;
   this->bl_val = (sinval - cosval) * power;
@@ -33,12 +42,13 @@ void Mecanum::set_direction(int16_t x, int16_t y) {
 };
 
 void Mecanum::update() {
-
+#ifdef MECANUM_WITH_IMU
   this->imu->get_yaw(&this->yaw, &this->angular, &this->imu_timestamp);
-  printf("angular: %lf rad/s\n", this->angular);
 
   this->turn =
       this->angle_pid.update(this->angle_target, this->yaw, this->angular);
+
+#endif
 
   double fl_combined = (this->fl_val + this->turn);
   double fr_combined = (this->fr_val - this->turn);
@@ -65,3 +75,7 @@ void Mecanum::update() {
   this->bl->set_direction(bl_combined * 32767.0);
   this->br->set_direction(br_combined * 32767.0);
 };
+
+#ifndef MECANUM_WITH_IMU
+void Mecanum::set_turn(double amount) { this->turn = amount; }
+#endif
