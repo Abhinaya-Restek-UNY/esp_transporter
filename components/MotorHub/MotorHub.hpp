@@ -36,7 +36,8 @@ public:
    * @param timer_group_id The MCPWM hardware group to use (usually 0 or 1).
    * @param frequency The desired PWM frequency in Hz.
    */
-  MotorHub(int timer_group_id, unsigned int frequency);
+  MotorHub(int timer_group_id, unsigned int frequency,
+           float voltage_multiplier = 1.f);
 
   /**
    * @brief Factory method to create and allocate hardware for a new motor.
@@ -58,7 +59,6 @@ public:
                       float max_pulse_ms);
 
 private:
-  //
   mcpwm_cmpr_handle_t create_pwm(gpio_num_t PWM);
 
   /**

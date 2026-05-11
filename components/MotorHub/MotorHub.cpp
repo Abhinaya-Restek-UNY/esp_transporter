@@ -5,6 +5,7 @@
 #include "driver/mcpwm_gen.h"
 #include "driver/mcpwm_oper.h"
 #include "driver/mcpwm_timer.h"
+#include <cmath>
 template <typename T> void MotorHub::push_node(ll<T> **tail, T *new_data) {
   ll<T> *newNode = new ll<T>{*tail, new_data, nullptr};
   if (*tail != nullptr) {
@@ -13,15 +14,21 @@ template <typename T> void MotorHub::push_node(ll<T> **tail, T *new_data) {
   *tail = newNode; // Update the tail to be the new node
 }
 
-MotorHub::MotorHub(int timer_group_id, unsigned int frequency)
+MotorHub::MotorHub(int timer_group_id, unsigned int frequency,
+                   float voltage_multiplier)
     : frequency(frequency) {
 
+  unsigned int multiplied_tick = std::ceil(2048 / voltage_multiplier);
+
   mcpwm_timer_config_t timer_config = {
-      .group_id = 0,                          // MCPWM group 0
-      .clk_src = MCPWM_TIMER_CLK_SRC_DEFAULT, // Default is usually 80MHz
-      .resolution_hz = frequency * 2048, // 80MHz resolution (1 tick = 12.5ns)
+      .group_id = 0,                          // MCPWM gro2048up 0
+      .clk_src = MCPWM_TIMER_CLK_SRC_DEFAULT, // Default i2048s usually 80MHz
+      .resolution_hz =
+          frequency *
+          (multiplied_tick), // 80MHz resolu2048tion (1 tick = 12.5ns)
+                             //
       .count_mode = MCPWM_TIMER_COUNT_MODE_UP,
-      .period_ticks = 2048, // 11-bit resolution
+      .period_ticks = multiplied_tick, // 11-bit resolution
   };
 
   this->timer_config = timer_config;
