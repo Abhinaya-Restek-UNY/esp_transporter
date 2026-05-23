@@ -3,17 +3,18 @@
 
 class Gripper {
 private:
-  Servo* servo;
+  Servo *claw;
+  Servo *lifter;
   float current_angle = 0;
-  float angle_step = 5.0;
-  float max_angle;  // <-- tambah ini
-  float min_angle;  // <-- tambah ini
+  float claw_step = 0.1;
+  float lifted_angle = 0;
+  float drop_angle = 0;
 
 public:
-  Gripper(Servo* servo);
-  void increase_angle();
-  void decrease_angle();
-  void lift();        // <-- tambah ini
-  void drop();        // <-- tambah ini
-  float get_angle();
+  Gripper(Servo *claw, Servo *lifter, float claw_step, float lifted_angle,
+          float drop_angle);
+  void close();
+  void open();
+  void lift();
+  void drop();
 };

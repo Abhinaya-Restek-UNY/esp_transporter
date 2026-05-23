@@ -1,23 +1,25 @@
 #include "Gripper.hpp"
+#include <cstdio>
 
-Gripper::Gripper(Servo* servo) : servo(servo), max_angle(90), min_angle(0) {}
+Gripper::Gripper(Servo *claw, Servo *lifter, float claw_step,
+                 float lifted_angle, float drop_angle)
+    : claw(claw), lifter(lifter), claw_step(claw_step),
+      lifted_angle(lifted_angle), drop_angle(drop_angle) {}
 
 void Gripper::close() {
-  this->current_angle += this->angle_step;
-  this->servo->set_angle(this->current_angle);
+  if (this->current_angle > 0) {
+    this->current_angle -= this->claw_step;
+    this->claw->set_angle(current_angle);
+  }
 }
 
 void Gripper::open() {
-  this->current_angle -= this->angle_step;
-  this->servo->set_angle(this->current_angle);
+  if (this->current_angle < this->claw->max_angle) {
+    this->current_angle += this->claw_step;
+    this->claw->set_angle(current_angle);
+  }
 }
 
-void Gripper::lift() {
-  this->current_angle = this->max_angle;
-  this->servo->set_angle(this->current_angle);
-}
+void Gripper::lift() { this->lifter->set_angle(this->lifted_angle); }
 
-void Gripper::drop() {
-  this->current_angle = this->min_angle;
-  this->servo->set_angle(this->current_angle);
-}
+void Gripper::drop() { this->lifter->set_angle(this->drop_angle); }
