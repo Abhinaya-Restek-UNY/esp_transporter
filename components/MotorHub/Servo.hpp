@@ -10,9 +10,9 @@ protected:
 
 public:
   void set_angle(float angle);
+  int16_t max_angle = 0;
 
 private:
-  int16_t max_angle = 0;
   mcpwm_cmpr_handle_t cmp;
   double scale = 0;
   int16_t min_tick = 0;

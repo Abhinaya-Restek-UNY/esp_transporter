@@ -11,24 +11,21 @@ template <typename T> void MotorHub::push_node(ll<T> **tail, T *new_data) {
   if (*tail != nullptr) {
     (*tail)->next = newNode;
   }
-  *tail = newNode; // Update the tail to be the new node
+  *tail = newNode;
 }
 
 MotorHub::MotorHub(int timer_group_id, unsigned int frequency,
                    float voltage_multiplier)
     : frequency(frequency) {
 
-  unsigned int multiplied_tick = std::ceil(2048 / voltage_multiplier);
+  unsigned int multiplied_tick = std::ceil(2048.0 * voltage_multiplier);
 
   mcpwm_timer_config_t timer_config = {
-      .group_id = 0,                          // MCPWM gro2048up 0
-      .clk_src = MCPWM_TIMER_CLK_SRC_DEFAULT, // Default i2048s usually 80MHz
-      .resolution_hz =
-          frequency *
-          (multiplied_tick), // 80MHz resolu2048tion (1 tick = 12.5ns)
-                             //
+      .group_id = timer_group_id,
+      .clk_src = MCPWM_TIMER_CLK_SRC_DEFAULT,
+      .resolution_hz = frequency * (multiplied_tick),
       .count_mode = MCPWM_TIMER_COUNT_MODE_UP,
-      .period_ticks = multiplied_tick, // 11-bit resolution
+      .period_ticks = multiplied_tick,
   };
 
   this->timer_config = timer_config;
@@ -47,8 +44,6 @@ mcpwm_cmpr_handle_t MotorHub::create_pwm(gpio_num_t PWM) {
 
   mcpwm_oper_handle_t current_oper = nullptr;
 
-  // 1. Do we need a new Operator?
-  // Since 1 operator handles 2 motors, we need a new one on motor 0, 2, 4...
   if (total_motor % MAX_COMPARATORS_PER_OPERATOR == 0) {
     if (total_operator >= MAX_OPERATOR) {
       return nullptr;
@@ -64,11 +59,9 @@ mcpwm_cmpr_handle_t MotorHub::create_pwm(gpio_num_t PWM) {
     push_node(&last_operator, current_oper);
     total_operator++;
   } else {
-    // Reuse the last operator we created
     current_oper = last_operator->data;
   }
 
-  // 2. Create the Comparator
   mcpwm_cmpr_handle_t new_cmpr = nullptr;
   mcpwm_comparator_config_t cmpr_config = {.flags = {
                                                .update_cmp_on_tez = true,
@@ -81,7 +74,6 @@ mcpwm_cmpr_handle_t MotorHub::create_pwm(gpio_num_t PWM) {
   push_node(&last_comparator, new_cmpr);
   total_comparator++;
 
-  // 3. Create the Generator (Link to the PWM pin)
   mcpwm_gen_handle_t new_gen = nullptr;
   mcpwm_generator_config_t gen_config = {
       .gen_gpio_num = PWM,
@@ -89,7 +81,6 @@ mcpwm_cmpr_handle_t MotorHub::create_pwm(gpio_num_t PWM) {
 
   ERR_CHECK(mcpwm_new_generator(current_oper, &gen_config, &new_gen));
 
-  // Set Generator Actions (High on empty, Low on comparator match)
   ERR_CHECK(mcpwm_generator_set_action_on_timer_event(
       new_gen, MCPWM_GEN_TIMER_EVENT_ACTION(MCPWM_TIMER_DIRECTION_UP,
                                             MCPWM_TIMER_EVENT_EMPTY,
@@ -111,7 +102,6 @@ Motor *MotorHub::create_motor(gpio_num_t GPIO_A, gpio_num_t GPIO_B,
     return nullptr;
   }
 
-  // 4. Create the Motor Object
   Motor *new_motor = new Motor(create_pwm(PWM), GPIO_A, GPIO_B);
 
   push_node(&last_motor, new_motor);

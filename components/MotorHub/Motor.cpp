@@ -7,6 +7,10 @@ Motor::Motor(mcpwm_cmpr_handle_t cmp, gpio_num_t A, gpio_num_t B)
 
   gpio_set_direction(A, GPIO_MODE_OUTPUT);
   gpio_set_direction(B, GPIO_MODE_OUTPUT);
+
+  ERR_CHECK(mcpwm_comparator_set_compare_value(this->cmp, 0));
+  gpio_set_level(this->A, 0);
+  gpio_set_level(this->B, 0);
 };
 
 void Motor::set_direction(int16_t direction) {
