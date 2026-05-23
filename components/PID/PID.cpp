@@ -1,5 +1,7 @@
 #include "PID.hpp"
 #include <algorithm>
+#include <cmath>
+#include <stdio.h>
 
 PID::PID(double Kp, double Ki, double Kd, double delta_t_ms, double limMin,
          double limMax, double limMinInt, double limMaxInt)
@@ -11,7 +13,10 @@ PID::PID(double Kp, double Ki, double Kd, double delta_t_ms, double limMin,
 double PID::update(double setpoint, double measurement,
                    double measured_velocity) {
   double error = setpoint - measurement;
-
+  while (error > M_PI)
+    error -= 2.0 * M_PI;
+  while (error < -M_PI)
+    error += 2.0 * M_PI;
   // Proportional
   double proportional = Kp * error;
 
@@ -34,3 +39,10 @@ double PID::update(double setpoint, double measurement,
 
   return out;
 }
+
+void PID::set_param(double Kp, double Ki, double Kd) {
+  this->Kp = Kp;
+  this->Kd = Kd;
+  this->Ki = Ki;
+  printf("%f %f %f\n", Kp, Ki, Kd);
+};

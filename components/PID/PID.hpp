@@ -8,6 +8,8 @@ public:
 
   double update(double setpoint, double measurement, double measured_velocity);
 
+  void set_param(double Kp, double Ki, double Kd);
+
 private:
   // Gains
   double Kp, Ki, Kd;
