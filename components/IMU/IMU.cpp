@@ -59,13 +59,15 @@ int8_t IMU::init_hardware() {
     return -1;
   }
 
-  xTaskCreate((TaskFunction_t)mpu_task, "mpu_task", 2048, this, 10,
-              &mpu_task_handle);
-
   this->mpu = new MPU6050(this->bus_handle);
   mpu->initialize();
 
-  return mpu->dmpInitialize();
+  uint8_t ret = mpu->dmpInitialize();
+
+  xTaskCreate((TaskFunction_t)mpu_task, "mpu_task", 8192, this, 10,
+              &mpu_task_handle);
+
+  return ret;
 }
 
 int8_t IMU::finalize_start() {
@@ -116,22 +118,39 @@ void IMU::mpu_task(IMU *context) {
 
 void IMU::get_yaw(double *yaw, double *angular_yaw, uint64_t *timestamp) {
   if (xSemaphoreTake(this->data_mutex, portMAX_DELAY) == pdTRUE) {
-    *yaw = atan2(2.0 * (this->raw_quat.w * this->raw_quat.z +
-                        this->raw_quat.x * this->raw_quat.y),
-                 1.0 - 2.0 * (this->raw_quat.y * this->raw_quat.y +
-                              this->raw_quat.z * this->raw_quat.z));
-    *angular_yaw = this->filtered_gyro_yaw / 16.4;
-    *timestamp = this->last_update;
+    if (yaw != NULL) {
+      *yaw = this->yawPitchRoll[0];
+    }
+    if (angular_yaw != NULL) {
+
+      *angular_yaw = this->filtered_gyro_yaw / 16.4;
+    }
+    if (timestamp != NULL) {
+
+      *timestamp = this->last_update;
+    }
     xSemaphoreGive(this->data_mutex);
   }
 };
 
 void IMU::receive_packet() {
-  mpu->dmpGetCurrentFIFOPacket(fifoBuffer);
+  uint16_t fifoCount = mpu->getFIFOCount();
+
+  if (fifoCount > 500) {
+    mpu->resetFIFO();
+    return;
+  }
+
+  if (!mpu->dmpGetCurrentFIFOPacket(fifoBuffer)) {
+    return;
+  }
+
   int64_t time_us = esp_timer_get_time();
 
   if (xSemaphoreTake(this->data_mutex, 100) == pdTRUE) {
     mpu->dmpGetQuaternion(&raw_quat, fifoBuffer);
+    mpu->dmpGetGravity(&gravity, &raw_quat);
+    mpu->dmpGetYawPitchRoll(this->yawPitchRoll, &raw_quat, &gravity);
     mpu->dmpGetGyro(&this->raw_gyro, fifoBuffer);
     this->filtered_gyro_yaw =
         IMU::lpf(this->raw_gyro.z, this->filtered_gyro_yaw, this->alpha);

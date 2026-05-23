@@ -88,7 +88,7 @@ public:
   void get_yaw(double *yaw, double *angular_yaw, uint64_t *timestamp);
 
 private:
-  double alpha = 0.8;
+  double alpha = 0.6;
   // --- Thread Safety ---
   SemaphoreHandle_t data_mutex; ///< Mutex protecting shared orientation data
 
@@ -104,7 +104,9 @@ private:
   uint8_t mpuIntStatus;     ///< Holds actual interrupt status byte from MPU
 
   // --- Data Storage ---
-  Quaternion raw_quat;  ///< Latest raw quaternion fetched from the DMP
+  Quaternion raw_quat; ///< Latest raw quaternion fetched from the DMP
+  float yawPitchRoll[3] = {0, 0, 0};
+  VectorFloat gravity;
   VectorInt16 raw_gyro; ///< Latest raw gyroscope vector fetched from the DMP
   double filtered_gyro_yaw = 0;
   OffsetData offset; ///< Internally stored calibration offsets
