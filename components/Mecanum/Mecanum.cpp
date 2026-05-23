@@ -1,26 +1,13 @@
 #include "Mecanum.hpp"
 #include <cmath>
 
-#ifdef MECANUM_WITH_IMU
-Mecanum::Mecanum(Motor *fr, Motor *fl, Motor *br, Motor *bl, IMU *imu,
-                 PIDConf *pid_conf)
-    : fr(fr), fl(fl), br(br), bl(bl), imu(imu),
-      angle_pid(pid_conf->Kp, pid_conf->Ki, pid_conf->Kp, pid_conf->delta_t,
-                -1.0, 1.0, -0.5, 0.5) {
-
-      };
-#else
 Mecanum::Mecanum(Motor *fr, Motor *fl, Motor *br, Motor *bl)
     : fr(fr), fl(fl), br(br), bl(bl) {
 
       };
-#endif
 
-#ifdef MECANUM_WITH_IMU
-void Mecanum::set_angle(float yaw) { this->angle_target = yaw; };
-#endif
+void Mecanum::update(int16_t x, int16_t y, double turn) {
 
-void Mecanum::set_direction(int16_t x, int16_t y) {
   this->hypot = std::hypot(x, y);
   if (this->hypot == 0.0) {
     this->power = 0.0;
@@ -28,6 +15,11 @@ void Mecanum::set_direction(int16_t x, int16_t y) {
     this->fr_val = 0.0;
     this->bl_val = 0.0;
     this->br_val = 0.0;
+
+    this->fl->set_direction(0);
+    this->fr->set_direction(0);
+    this->bl->set_direction(0);
+    this->br->set_direction(0);
     return;
   }
 
@@ -35,47 +27,29 @@ void Mecanum::set_direction(int16_t x, int16_t y) {
   double sinval = (double)y / hypot;
 
   this->power = hypot / 32767.0;
-  this->fl_val = (sinval + cosval) * power;
-  this->fr_val = (sinval - cosval) * power;
-  this->bl_val = (sinval - cosval) * power;
-  this->br_val = (sinval + cosval) * power;
-};
 
-void Mecanum::update() {
-#ifdef MECANUM_WITH_IMU
-  this->imu->get_yaw(&this->yaw, &this->angular, &this->imu_timestamp);
+  fl_val = ((sinval + cosval) * power + turn);
+  fr_val = ((sinval - cosval) * power - turn);
+  bl_val = ((sinval - cosval) * power + turn);
+  br_val = ((sinval + cosval) * power - turn);
 
-  this->turn =
-      this->angle_pid.update(this->angle_target, this->yaw, this->angular);
-
-#endif
-
-  double fl_combined = (this->fl_val + this->turn);
-  double fr_combined = (this->fr_val - this->turn);
-  double bl_combined = (this->bl_val + this->turn);
-  double br_combined = (this->br_val - this->turn);
-
-  double max_wheel = fabs(fl_combined);
-  if (fabs(fr_combined) > max_wheel)
-    max_wheel = fabs(fr_combined);
-  if (fabs(bl_combined) > max_wheel)
-    max_wheel = fabs(bl_combined);
-  if (fabs(br_combined) > max_wheel)
-    max_wheel = fabs(br_combined);
+  double max_wheel = fabs(fl_val);
+  if (fabs(fr_val) > max_wheel)
+    max_wheel = fabs(fr_val);
+  if (fabs(bl_val) > max_wheel)
+    max_wheel = fabs(bl_val);
+  if (fabs(br_val) > max_wheel)
+    max_wheel = fabs(br_val);
 
   if (max_wheel > 1.0) {
-    fl_combined /= max_wheel;
-    fr_combined /= max_wheel;
-    bl_combined /= max_wheel;
-    br_combined /= max_wheel;
+    fl_val /= max_wheel;
+    fr_val /= max_wheel;
+    bl_val /= max_wheel;
+    br_val /= max_wheel;
   }
 
-  this->fl->set_direction(fl_combined * 32767.0);
-  this->fr->set_direction(fr_combined * 32767.0);
-  this->bl->set_direction(bl_combined * 32767.0);
-  this->br->set_direction(br_combined * 32767.0);
+  this->fl->set_direction(fl_val * 32767.0);
+  this->fr->set_direction(fr_val * 32767.0);
+  this->bl->set_direction(bl_val * 32767.0);
+  this->br->set_direction(br_val * 32767.0);
 };
-
-#ifndef MECANUM_WITH_IMU
-void Mecanum::set_turn(double amount) { this->turn = amount; }
-#endif
