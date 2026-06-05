@@ -1,0 +1,210 @@
+
+      if (gamepad.is_pressed(Gamepad::ButtonCode::TRIANGLE)) {
+        pid_conf.Kp += 0.001;
+        myYawPID.set_param(pid_conf.Kp, pid_conf.Ki, pid_conf.Kd);
+      } else if (gamepad.is_pressed(Gamepad::ButtonCode::CROSS)) {
+        pid_conf.Kp -= 0.001;
+        myYawPID.set_param(pid_conf.Kp, pid_conf.Ki, pid_conf.Kd);
+      }
+      //
+      if (gamepad.is_pressed(Gamepad::ButtonCode::R1)) {
+        pid_conf.Kd += 0.00001;
+        myYawPID.set_param(pid_conf.Kp, pid_conf.Ki, pid_conf.Kd);
+      } else if (gamepad.is_pressed(Gamepad::ButtonCode::R2)) {
+        pid_conf.Kd -= 0.00001;
+        myYawPID.set_param(pid_conf.Kp, pid_conf.Ki, pid_conf.Kd);
+      }
+
+      if (gamepad.is_pressed(Gamepad::ButtonCode::L1)) {
+        pid_conf.Ki += 0.00001;
+        myYawPID.set_param(pid_conf.Kp, pid_conf.Ki, pid_conf.Kd);
+      } else if (gamepad.is_pressed(Gamepad::ButtonCode::L2)) {
+        pid_conf.Ki -= 0.00001;
+        myYawPID.set_param(pid_conf.Kp, pid_conf.Ki, pid_conf.Kd);
+      }
+
+      if (gamepad.is_pressed(Gamepad::SQUARE)) {
+        save_pid_to_nvs(pid_conf);
+      } else if (gamepad.is_pressed(Gamepad::CIRCLE)) {
+        pid_conf.Kd = 0;
+        pid_conf.Ki = 0;
+        pid_conf.Kp = 0;
+
+        save_pid_to_nvs(pid_conf);
+      }
+
+
+#include "Gamepad.hpp"
+#include "Gripper.hpp"
+#include "IMU.hpp"
+#include "PID.hpp"
+#include "driver/timer_types_legacy.h"
+#include <algorithm>
+
+#include "Mecanum.hpp"
+#include "MotorHub.hpp"
+#include "config.hpp"
+#include "esp_task_wdt.h"
+#include "freertos/idf_additions.h"
+#include "freertos/projdefs.h"
+#include "nvs_flash.h"
+#include "soc/gpio_num.h"
+#include <cmath>
+#include <stdio.h>
+
+void dead(Gamepad::joy_data_t *joy, uint8_t deadz) {
+
+  if (abs(joy->x) < deadz) {
+    joy->x = 0;
+  }
+
+  if (abs(joy->y) < deadz) {
+    joy->y = 0;
+  }
+};
+
+extern "C" void app_main(void) {
+
+  mt_hub.start();
+
+  Motor *mt_br = mt_hub.create_motor(BR_A, BR_B, BR_PWM);
+  Motor *mt_bl = mt_hub.create_motor(BL_A, BL_B, BL_PWM);
+  Motor *mt_fr = mt_hub.create_motor(FR_A, FR_B, FR_PWM);
+  Motor *mt_fl = mt_hub.create_motor(FL_A, FL_B, FL_PWM);
+
+  Mecanum mecanum(mt_fr, mt_fl, mt_br, mt_bl);
+  servos.start();
+
+  Servo *lifter1 = servos.create_servo(GPIO_NUM_16, 180, 0.5, 2.5);
+  Servo *lifter2 = servos.create_servo(GPIO_NUM_2, 180, 0.5, 2.5);
+
+  Servo *claw2 = servos.create_servo(GPIO_NUM_4, 180, 0.5, 2.5);
+  Servo *claw1 = servos.create_servo(GPIO_NUM_15, 180, 0.5, 2.5);
+
+  Gamepad gamepad;
+  gamepad.start();
+
+  while (!gamepad.is_connected()) {
+    vTaskDelay(pdMS_TO_TICKS(100));
+  }
+
+  vTaskDelay(pdMS_TO_TICKS(200));
+
+  gamepad.play_rumble(255, 200);
+  vTaskDelay(pdMS_TO_TICKS(200));
+
+  IMU::OffsetData calib = {};
+
+  IMU imu(GPIO_NUM_21, GPIO_NUM_22, GPIO_NUM_34);
+
+  Gamepad::joy_data_t orientation;
+  Gamepad::joy_data_t direction;
+
+  PID_Data pid_conf = {0, 0, 0};
+
+  PID myYawPID(pid_conf.Kp, pid_conf.Ki, pid_conf.Kd, 10.0, -1.0, 1.0, -0.3,
+               0.3);
+
+  uint16_t joy_deadzone = 1638 * 3;
+  double yaw_offset = 0;
+  double yaw = 0;
+  double imu_cos = 0;
+  double imu_sin = 0;
+  double angular = 0;
+
+  double speed_multiplier = 1.0;
+  bool is_turning = false;
+  double setpoint = 0.0;
+  double turn = 0;
+  while (1) {
+
+    gamepad.get_l_joy(&direction);
+    gamepad.get_r_joy(&orientation);
+
+    dead(&direction, joy_deadzone);
+
+    dead(&orientation, joy_deadzone);
+
+    if (gamepad.is_pressed(Gamepad::ButtonCode::PS_BUTTON)) {
+      if (gamepad.is_pressed(Gamepad::ButtonCode::TRIANGLE)) {
+        gamepad.zero_l_joy();
+      } else if (gamepad.is_pressed(Gamepad::ButtonCode::CIRCLE)) {
+        yaw_offset = yaw;
+        setpoint = 0;
+      } else if (gamepad.is_pressed(Gamepad::ButtonCode::SQUARE)) {
+        gamepad.play_rumble(200, 100);
+      }
+    } else {
+
+      griper[0].set_is_lifting(gamepad.is_pressed(Gamepad::ButtonCode::L2));
+      griper[0].set_is_gripping(gamepad.is_pressed(Gamepad::ButtonCode::L1));
+      griper[1].set_is_lifting(gamepad.is_pressed(Gamepad::ButtonCode::R2));
+      griper[1].set_is_gripping(gamepad.is_pressed(Gamepad::ButtonCode::R1));
+
+      if (gamepad.is_pressed(Gamepad::ButtonCode::CIRCLE)) {
+        speed_multiplier = 0.30;
+      } else if (gamepad.is_pressed(Gamepad::ButtonCode::TRIANGLE)) {
+        speed_multiplier = 0.50;
+      } else if (gamepad.is_pressed(Gamepad::ButtonCode::SQUARE)) {
+        speed_multiplier = 1.0;
+      }
+    }
+
+    double input_x =
+        gamepad.get_dpad_x() ? gamepad.get_dpad_x() : (double)direction.x;
+
+    double input_y =
+        gamepad.get_dpad_y() ? gamepad.get_dpad_y() : -(double)direction.y;
+
+    imu.get_yaw(&yaw, &angular, NULL);
+
+    double angle = -(yaw - yaw_offset);
+
+    imu_cos = cos(angle);
+    imu_sin = sin(angle);
+
+    double rotated_x = input_x * imu_cos + input_y * imu_sin;
+    double rotated_y = -input_x * imu_sin + input_y * imu_cos;
+
+    if (hypot(input_x, input_y) > 16384 &&
+        gamepad.is_pressed(Gamepad::ButtonCode::CROSS)) {
+
+      double move_angle = atan2(-input_x, input_y);
+      double error = move_angle - angle;
+
+      while (error > M_PI)
+        error -= 2.0 * M_PI;
+      while (error < -M_PI)
+        error += 2.0 * M_PI;
+
+      if (fabs(error) <= (M_PI / 2.0)) {
+        setpoint = move_angle;
+      } else {
+        setpoint = move_angle + M_PI;
+      }
+    }
+
+    if (orientation.x != 0) {
+      turn = (double)(orientation.x) / 32768.0 * speed_multiplier;
+      setpoint = angle;
+      is_turning = true;
+    } else {
+      if (is_turning) {
+        if (fabs(angular) < M_PI * 10) {
+          is_turning = false;
+        }
+        setpoint = angle;
+        turn = 0;
+      } else {
+        turn = std::clamp(-myYawPID.update(setpoint, angle, -angular),
+                          -speed_multiplier, speed_multiplier);
+      }
+    }
+
+    mecanum.update(
+        std::clamp((int)(rotated_x * speed_multiplier), -32767, 32767),
+        std::clamp((int)(rotated_y * speed_multiplier), -32767, 32767), turn);
+
+    vTaskDelay(pdMS_TO_TICKS(10));
+  }
+}

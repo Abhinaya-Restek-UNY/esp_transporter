@@ -1,25 +1,30 @@
 #include "Gripper.hpp"
+#include "freertos/idf_additions.h"
 #include <cstdio>
 
-Gripper::Gripper(Servo *claw, Servo *lifter, float claw_step,
-                 float lifted_angle, float drop_angle)
-    : claw(claw), lifter(lifter), claw_step(claw_step),
-      lifted_angle(lifted_angle), drop_angle(drop_angle) {}
+#define MAX_CLAW_ANGLE 100
+#define MIN_CLAW_ANGLE 60
 
-void Gripper::close() {
-  if (this->current_angle > 0) {
-    this->current_angle -= this->claw_step;
-    this->claw->set_angle(current_angle);
-  }
+#define MAX_LIFT_ANGLE 90
+#define MIN_LIFT_ANGLE 0
+
+Gripper::Gripper(Servo *claw, Servo *lifter, uint32_t debounce)
+    : claw(claw), lifter(lifter) {
+  this->set_claw(true);
+  this->set_lifter(1024);
 }
 
-void Gripper::open() {
-  if (this->current_angle < this->claw->max_angle) {
-    this->current_angle += this->claw_step;
-    this->claw->set_angle(current_angle);
-  }
+void Gripper::set_claw(bool gripping) {
+  this->claw->set_angle(gripping ? MIN_CLAW_ANGLE : MAX_CLAW_ANGLE);
+}
+void Gripper::set_lifter(int16_t throttlebrake) {
+  this->lifter->set_angle(MIN_LIFT_ANGLE + (MAX_LIFT_ANGLE - MIN_LIFT_ANGLE) *
+                                               throttlebrake / 1024.0);
 }
 
-void Gripper::lift() { this->lifter->set_angle(this->lifted_angle); }
+uint32_t Gripper::get_time() { return esp_timer_get_time() / 1000; }
 
-void Gripper::drop() { this->lifter->set_angle(this->drop_angle); }
+Gripper::Gripper() {
+  // NOTE: YES DOES NOTHING.
+
+};

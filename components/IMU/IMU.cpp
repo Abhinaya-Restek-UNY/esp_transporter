@@ -4,7 +4,8 @@
 #include "freertos/idf_additions.h"
 
 IMU::IMU(gpio_num_t SDA, gpio_num_t SCL, gpio_num_t interrupt)
-    : SDA_pin(SDA), SCL_pin(SCL), interrupt_pin(interrupt) {
+    : SDA_pin(SDA), SCL_pin(SCL), interrupt_pin(interrupt),
+      offset("i", {0, 0, 0, 0, 0, 0}) {
   i2c_master_bus_config_t bus_conf = {
       .i2c_port = I2C_NUM_0,
       .sda_io_num = SDA,
@@ -14,26 +15,26 @@ IMU::IMU(gpio_num_t SDA, gpio_num_t SCL, gpio_num_t interrupt)
       .flags = {.enable_internal_pullup = true}};
 
   ESP_ERROR_CHECK(i2c_new_master_bus(&bus_conf, &bus_handle));
-  this->data_mutex = xSemaphoreCreateMutex();
+
+  // this->offset.remove();
 }
 
-int8_t IMU::start(OffsetData offset) {
-  this->offset = offset;
+int8_t IMU::start() {
 
   if (init_hardware() != 0)
     return -1;
 
-  mpu->setXAccelOffset(offset.accel_x);
-  mpu->setYAccelOffset(offset.accel_y);
-  mpu->setZAccelOffset(offset.accel_z);
-  mpu->setXGyroOffset(offset.gyro_x);
-  mpu->setYGyroOffset(offset.gyro_y);
-  mpu->setZGyroOffset(offset.gyro_z);
+  mpu->setXAccelOffset(this->offset.value.accel_x);
+  mpu->setYAccelOffset(this->offset.value.accel_y);
+  mpu->setZAccelOffset(this->offset.value.accel_z);
+  mpu->setXGyroOffset(this->offset.value.gyro_x);
+  mpu->setYGyroOffset(this->offset.value.gyro_y);
+  mpu->setZGyroOffset(this->offset.value.gyro_z);
 
   return finalize_start();
 }
 
-int8_t IMU::start(uint8_t calibration_loop) {
+int8_t IMU::start_and_calibrate(uint8_t calibration_loop) {
   if (init_hardware() != 0)
     return -2;
 
@@ -44,12 +45,14 @@ int8_t IMU::start(uint8_t calibration_loop) {
 
   int8_t status = finalize_start();
 
-  this->offset.gyro_x = mpu->getXGyroOffset();
-  this->offset.gyro_y = mpu->getYGyroOffset();
-  this->offset.gyro_z = mpu->getZGyroOffset();
-  this->offset.accel_x = mpu->getXAccelOffset();
-  this->offset.accel_y = mpu->getYAccelOffset();
-  this->offset.accel_z = mpu->getZAccelOffset();
+  this->offset.value.gyro_x = mpu->getXGyroOffset();
+  this->offset.value.gyro_y = mpu->getYGyroOffset();
+  this->offset.value.gyro_z = mpu->getZGyroOffset();
+  this->offset.value.accel_x = mpu->getXAccelOffset();
+  this->offset.value.accel_y = mpu->getYAccelOffset();
+  this->offset.value.accel_z = mpu->getZAccelOffset();
+
+  this->offset.save();
 
   return status;
 }
@@ -94,71 +97,55 @@ void IMU::setup_interrupt() {
                        this->mpu_task_handle);
 };
 
-void IMU::set_offset_data(OffsetData offset) {
-  this->offset = offset;
-
-  mpu->setXGyroOffset(offset.gyro_x);
-  mpu->setYGyroOffset(offset.gyro_y);
-  mpu->setZGyroOffset(offset.gyro_z);
-
-  mpu->setXAccelOffset(offset.accel_x);
-  mpu->setYAccelOffset(offset.accel_y);
-  mpu->setZAccelOffset(offset.accel_z);
-};
-
-IMU::OffsetData IMU::get_offset() { return this->offset; }
-
 void IMU::mpu_task(IMU *context) {
 
   while (1) {
     ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-    context->receive_packet();
+    uint16_t fifoCount = context->mpu->getFIFOCount();
+
+    if (fifoCount > 500) {
+      context->mpu->resetFIFO();
+      continue;
+    }
+
+    if (!context->mpu->dmpGetCurrentFIFOPacket(context->fifoBuffer)) {
+      continue;
+    }
+
+    int64_t time_us = esp_timer_get_time();
+
+    context->mpu->dmpGetQuaternion(&context->raw_quat, context->fifoBuffer);
+    context->mpu->dmpGetGravity(&context->gravity, &context->raw_quat);
+    context->mpu->dmpGetYawPitchRoll(context->yawPitchRoll, &context->raw_quat,
+                                     &context->gravity);
+    context->mpu->dmpGetGyro(&context->raw_gyro, context->fifoBuffer);
+    context->angular_yaw =
+        IMU::lpf(context->raw_gyro.z, context->angular_yaw, context->alpha);
+    context->yaw = context->yawPitchRoll[0];
+    context->last_update = time_us;
   }
 }
 
 void IMU::get_yaw(double *yaw, double *angular_yaw, uint64_t *timestamp) {
-  if (xSemaphoreTake(this->data_mutex, portMAX_DELAY) == pdTRUE) {
-    if (yaw != NULL) {
-      *yaw = this->yawPitchRoll[0];
-    }
-    if (angular_yaw != NULL) {
+  if (yaw != NULL) {
+    double calc = (this->yaw - this->yaw_offset) + M_PI_2;
 
-      *angular_yaw = this->filtered_gyro_yaw / 16.4;
-    }
-    if (timestamp != NULL) {
+    while (calc > M_PI)
+      calc -= 2.0 * M_PI;
+    while (calc < -M_PI)
+      calc += 2.0 * M_PI;
 
-      *timestamp = this->last_update;
-    }
-    xSemaphoreGive(this->data_mutex);
+    *yaw = calc;
+  }
+  if (angular_yaw != NULL) {
+    *angular_yaw = this->angular_yaw / 939.6508;
+  }
+  if (timestamp != NULL) {
+    *timestamp = this->last_update;
   }
 };
 
-void IMU::receive_packet() {
-  uint16_t fifoCount = mpu->getFIFOCount();
-
-  if (fifoCount > 500) {
-    mpu->resetFIFO();
-    return;
-  }
-
-  if (!mpu->dmpGetCurrentFIFOPacket(fifoBuffer)) {
-    return;
-  }
-
-  int64_t time_us = esp_timer_get_time();
-
-  if (xSemaphoreTake(this->data_mutex, 100) == pdTRUE) {
-    mpu->dmpGetQuaternion(&raw_quat, fifoBuffer);
-    mpu->dmpGetGravity(&gravity, &raw_quat);
-    mpu->dmpGetYawPitchRoll(this->yawPitchRoll, &raw_quat, &gravity);
-    mpu->dmpGetGyro(&this->raw_gyro, fifoBuffer);
-    this->filtered_gyro_yaw =
-        IMU::lpf(this->raw_gyro.z, this->filtered_gyro_yaw, this->alpha);
-    this->last_update = time_us;
-    xSemaphoreGive(this->data_mutex);
-  }
-};
-
+void IMU::offset_yaw() { this->yaw_offset = this->yaw; }
 double IMU::lpf(double raw, double prev, double alpha) {
   return (alpha * raw) + (1.0 - alpha) * prev;
 }

@@ -9,22 +9,13 @@ Mecanum::Mecanum(Motor *fr, Motor *fl, Motor *br, Motor *bl)
 void Mecanum::update(int16_t x, int16_t y, double turn) {
 
   this->hypot = std::hypot(x, y);
-  if (this->hypot == 0.0) {
-    this->power = 0.0;
-    this->fl_val = 0.0;
-    this->fr_val = 0.0;
-    this->bl_val = 0.0;
-    this->br_val = 0.0;
 
-    this->fl->set_direction(0);
-    this->fr->set_direction(0);
-    this->bl->set_direction(0);
-    this->br->set_direction(0);
-    return;
+  double cosval = 0;
+  double sinval = 0;
+  if (this->hypot > 0.0) {
+    cosval = (double)x / hypot;
+    sinval = (double)y / hypot;
   }
-
-  double cosval = (double)x / hypot;
-  double sinval = (double)y / hypot;
 
   this->power = hypot / 32767.0;
 
