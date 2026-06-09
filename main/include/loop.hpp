@@ -43,11 +43,13 @@ public:
   double dir_y = 0;
   double yaw = 0;
   double yaw_angular = 0;
-  double speed_multiplier = 1.f;
+  double speed_multiplier = 1.0;
+  double gripper_speed_multiplier = 1.0;
+  bool rollin = false;
 
   bool check_super_hotkey();
 
-  void update_yaw();
+  void update_orientation();
   void normal_mode_update_input_joy();
 
   void normal_mode_check_gripper_hotkey();

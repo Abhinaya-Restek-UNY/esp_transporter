@@ -15,8 +15,8 @@ void Motor::set_direction(int16_t direction) {
   if (direction == 0) {
 
     ERR_CHECK(mcpwm_comparator_set_compare_value(this->cmp, 0));
-    gpio_set_level(this->A, 0);
-    gpio_set_level(this->B, 0);
+    gpio_set_level(this->A, 1);
+    gpio_set_level(this->B, 1);
     return;
   }
   uint16_t speed = abs(direction);

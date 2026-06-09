@@ -122,6 +122,9 @@ void IMU::mpu_task(IMU *context) {
     context->angular_yaw =
         IMU::lpf(context->raw_gyro.z, context->angular_yaw, context->alpha);
     context->yaw = context->yawPitchRoll[0];
+
+    context->pitch = context->yawPitchRoll[1];
+    context->roll = context->yawPitchRoll[2];
     context->last_update = time_us;
   }
 }
@@ -144,6 +147,9 @@ void IMU::get_yaw(double *yaw, double *angular_yaw, uint64_t *timestamp) {
     *timestamp = this->last_update;
   }
 };
+
+double IMU::get_pitch() { return this->pitch.load(); }
+double IMU::get_roll() { return this->roll.load(); }
 
 void IMU::offset_yaw() { this->yaw_offset = this->yaw; }
 double IMU::lpf(double raw, double prev, double alpha) {

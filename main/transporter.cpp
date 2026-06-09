@@ -24,13 +24,13 @@ extern "C" void app_main(void) {
 
   vTaskDelay(pdMS_TO_TICKS(100));
 
-  ctx.gamepad.play_rumble(255, 100);
+  ctx.gamepad.play_rumble();
 
   vTaskDelay(pdMS_TO_TICKS(100));
   if (ctx.device_mode.value == DeviceMode::CALIBRATE_IMU) {
 
     ctx.imu.start_and_calibrate(IMU_CALIBRATION_LOOP);
-    ctx.gamepad.play_rumble(255, 100);
+    ctx.gamepad.play_rumble();
 
     ctx.device_mode.value = DeviceMode::NORMAL;
     ctx.device_mode.save();
@@ -46,10 +46,49 @@ extern "C" void app_main(void) {
 
   while (1) {
 
-    ctx.gamepad.play_rumble(255, 100);
+    ctx.gamepad.play_rumble();
     printf("Mode: %d\n", (uint8_t)ctx.device_mode.value);
     if (ctx.device_mode.value == DeviceMode::CALIBRATE_IMU) {
       break;
+    } else if (ctx.device_mode.value == DeviceMode::CALIBRATE_DC_MOTOR) {
+      TickType_t lastwaketime = xTaskGetTickCount();
+
+      const TickType_t frequency = pdMS_TO_TICKS(10);
+
+      while (!ctx.check_super_hotkey()) {
+
+        ctx.update_orientation();
+        if (!ctx.normal_mode_check_PS_hotkey()) {
+        }
+
+        ctx.normal_mode_update_input_joy();
+
+        // if (ctx.gamepad.is_pressed(Gamepad::ButtonCode::CIRCLE)) {
+        //   ctx.mecanum->correction.value.vertical += 0.0001;
+        //
+        // } else if (ctx.gamepad.is_pressed(Gamepad::ButtonCode::SQUARE)) {
+        //   ctx.mecanum->correction.value.vertical -= 0.0001;
+        // }
+        //
+        // if (ctx.gamepad.is_pressed(Gamepad::ButtonCode::TRIANGLE)) {
+        //   ctx.mecanum->correction.value.vertical += 0.0001;
+        //
+        // } else if (ctx.gamepad.is_pressed(Gamepad::ButtonCode::CROSS)) {
+        //   ctx.mecanum->correction.value.vertical -= 0.0001;
+        // }
+        // if (ctx.gamepad.is_just_pressed(Gamepad::OPTIONS)) {
+        //   ctx.mecanum->correction.save();
+        //
+        // } else if (ctx.gamepad.is_just_pressed(Gamepad::ButtonCode::SHARE)) {
+        //   ctx.mecanum->correction.value = {0, 0};
+        // }
+        //
+        ctx.normal_mode_update_turn();
+
+        ctx.normal_mode_update_mecanum();
+      }
+
+      vTaskDelayUntil(&lastwaketime, frequency);
     } else if (ctx.device_mode.value == DeviceMode::CALIBRATE_PID) {
 
       TickType_t lastwaketime = xTaskGetTickCount();
@@ -97,7 +136,7 @@ extern "C" void app_main(void) {
                  ctx.pid.config->Kd, ctx.pid.config->Ki);
         }
 
-        ctx.update_yaw();
+        ctx.update_orientation();
 
         ctx.normal_mode_update_input_joy();
 
@@ -117,15 +156,21 @@ extern "C" void app_main(void) {
       while (!ctx.check_super_hotkey()) {
         if (ctx.gamepad.is_just_pressed(Gamepad::ButtonCode::CROSS)) {
           ctx.set_orientation_config(OrientationControllConfig::ABSOLUTE_ANGLE);
-          ctx.gamepad.play_rumble(255, 100);
+          ctx.gamepad.play_rumble();
         } else if (ctx.gamepad.is_just_pressed(Gamepad::ButtonCode::SQUARE)) {
           ctx.set_orientation_config(
               OrientationControllConfig::RELATIVE_INCREMENT_ANGLE);
-          ctx.gamepad.play_rumble(255, 100);
+          ctx.gamepad.play_rumble();
         } else if (ctx.gamepad.is_just_pressed(Gamepad::ButtonCode::TRIANGLE)) {
           ctx.set_orientation_config(
               OrientationControllConfig::INCREMENT_ANGLE);
-          ctx.gamepad.play_rumble(255, 100);
+          ctx.gamepad.play_rumble();
+        }
+
+        if (ctx.gamepad.is_just_pressed(Gamepad::L1)) {
+          ctx.set_gripper_config(GripperControllConfig::ANALOG_GRIPPER);
+        } else if (ctx.gamepad.is_just_pressed(Gamepad::L2)) {
+          ctx.set_gripper_config(GripperControllConfig::GRIPPER_TO_TURN);
         }
 
         if (ctx.gamepad.is_just_pressed(Gamepad::R1)) {
@@ -145,7 +190,7 @@ extern "C" void app_main(void) {
       while (!ctx.check_super_hotkey()) {
         if (ctx.get_direction_config() ==
             DirectionControllConfig::ABSOLUTE_DIRECTION) {
-          ctx.update_yaw();
+          ctx.update_orientation();
         }
         if (!ctx.normal_mode_check_PS_hotkey()) {
           ctx.normal_mode_check_gripper_hotkey();

@@ -1,4 +1,5 @@
 #include "loop.hpp"
+#include "btstack_run_loop.h"
 #include "esp_system.h"
 #include <algorithm>
 #include <cmath>
@@ -56,8 +57,9 @@ bool MainContext::check_super_hotkey() {
       this->device_mode.value = DeviceMode::SET_OPTION;
     } else if (this->gamepad.is_pressed(Gamepad::OPTIONS)) {
       esp_restart();
+    } else if (this->gamepad.is_pressed(Gamepad::SHARE)) {
+      this->device_mode.value = DeviceMode::CALIBRATE_DC_MOTOR;
     }
-
     if (prev != this->device_mode.value) {
       this->device_mode.save();
       return true;
@@ -67,8 +69,13 @@ bool MainContext::check_super_hotkey() {
   return false;
 };
 
-void MainContext::update_yaw() {
+void MainContext::update_orientation() {
   imu.get_yaw(&this->yaw, &this->yaw_angular, NULL);
+  if (fabs(imu.get_roll()) > M_PI_2 * .75) {
+    this->rollin = true;
+  } else {
+    this->rollin = false;
+  }
 };
 
 void MainContext::normal_mode_update_input_joy() {
@@ -102,6 +109,7 @@ void MainContext::close() {
   instance.mt_br->set_direction(0);
   instance.mt_fl->set_direction(0);
   instance.mt_fr->set_direction(0);
+  btstack_run_loop_trigger_exit();
 };
 
 MainContext &MainContext::getInstance() {
@@ -179,7 +187,7 @@ bool MainContext::normal_mode_check_PS_hotkey() {
       this->imu.get_yaw(&this->yaw, &this->yaw_angular, NULL);
       this->yaw_target = this->yaw;
     } else if (this->gamepad.is_pressed(Gamepad::ButtonCode::SQUARE)) {
-      this->gamepad.play_rumble(200, 100);
+      this->gamepad.play_rumble();
     }
     return true;
   }
@@ -189,7 +197,7 @@ bool MainContext::normal_mode_check_PS_hotkey() {
 
 bool MainContext::normal_mode_check_speed_multiplier_hotkey() {
   if (this->gamepad.is_pressed(Gamepad::ButtonCode::CIRCLE)) {
-    this->speed_multiplier = 0.30;
+    this->speed_multiplier = 0.350;
   } else if (this->gamepad.is_pressed(Gamepad::ButtonCode::TRIANGLE)) {
     this->speed_multiplier = 0.50;
   } else if (this->gamepad.is_pressed(Gamepad::ButtonCode::SQUARE)) {
@@ -206,19 +214,34 @@ bool MainContext::normal_mode_check_orientation_follow_direction() {
       DirectionControllConfig::RELATIVE_DIRECTION) {
     return false;
   }
+  if (this->gamepad.is_pressed(Gamepad::ButtonCode::CROSS)) {
+    if (this->gamepad.get_dpad_x() != 0 || this->gamepad.get_dpad_y() != 0) {
 
-  if (hypot(this->_dir_x, this->_dir_y) > 16384 &&
-      this->gamepad.is_pressed(Gamepad::ButtonCode::CROSS)) {
+      double move_angle = atan2(gamepad.get_dpad_y(), gamepad.get_dpad_x());
+      double error = wrap_rot(move_angle - yaw);
 
-    double move_angle = atan2(this->_dir_y, this->_dir_x);
-    double error = wrap_rot(move_angle - yaw);
-
-    if (fabs(error) <= (M_PI / 2.0)) {
-      yaw_target = move_angle;
-    } else {
-      yaw_target = wrap_rot(move_angle + M_PI);
+      if (fabs(error) <= (M_PI / 2.0)) {
+        yaw_target = move_angle;
+      } else {
+        yaw_target = wrap_rot(move_angle + M_PI);
+      }
+      this->turn = pid.update(this->yaw_target, this->yaw, yaw_angular);
+      return true;
     }
-    return true;
+
+    if (hypot(this->_dir_x, this->_dir_y) > 16384) {
+
+      double move_angle = atan2(this->_dir_y, this->_dir_x);
+      double error = wrap_rot(move_angle - yaw);
+
+      if (fabs(error) <= (M_PI / 2.0)) {
+        yaw_target = move_angle;
+      } else {
+        yaw_target = wrap_rot(move_angle + M_PI);
+      }
+      this->turn = pid.update(this->yaw_target, this->yaw, yaw_angular);
+      return true;
+    }
   }
 
   return false;
@@ -241,7 +264,6 @@ bool MainContext::normal_mode_update_turn() {
     this->turn =
         this->pid.update(this->yaw_target, this->yaw, this->yaw_angular);
 
-    return true;
     break;
   }
 
@@ -264,7 +286,6 @@ bool MainContext::normal_mode_update_turn() {
           this->pid.update(this->yaw_target, this->yaw, this->yaw_angular);
     }
 
-    return true;
     break;
   }
 
@@ -285,7 +306,8 @@ bool MainContext::normal_mode_update_turn() {
         while (angle_delta < -M_PI)
           angle_delta += 2 * M_PI;
 
-        this->yaw_target = last_orientation + angle_delta;
+        this->yaw_target =
+            last_orientation + angle_delta * this->speed_multiplier;
       } else {
         last_angle = current_joystick_angle;
         last_orientation = this->yaw;
@@ -301,47 +323,103 @@ bool MainContext::normal_mode_update_turn() {
     // 2. Update PID with the safely bounded target
     this->turn =
         this->pid.update(this->yaw_target, this->yaw, this->yaw_angular);
-
-    return true;
+    break;
   }
+  default:
+    break;
   }
 
-  return false;
+  if (this->get_gripper_config() == GRIPPER_TO_TURN) {
+    double tur = 0;
+    if (this->gamepad.get_brake() != 0) {
+
+      tur = ((this->gamepad.is_pressed(Gamepad::ButtonCode::R2)) -
+             this->gamepad.is_pressed(Gamepad::ButtonCode::R1));
+    }
+
+    if (this->gamepad.get_throttle() != 0) {
+      tur = ((this->gamepad.is_pressed(Gamepad::ButtonCode::L2)) -
+             this->gamepad.is_pressed(Gamepad::ButtonCode::L1));
+    }
+
+    if (this->gamepad.get_brake() != 0 || this->gamepad.get_throttle() != 0) {
+      this->gripper_speed_multiplier = 0.5;
+    } else {
+      this->gripper_speed_multiplier = 1.0;
+    }
+
+    static bool is_turning_wit_gripper = false;
+    if (tur != 0) {
+
+      this->turn = tur * this->speed_multiplier * 0.3;
+      this->yaw_target = this->yaw;
+      is_turning_wit_gripper = true;
+    } else if (is_turning_wit_gripper) {
+
+      this->turn = 0;
+      this->yaw_target = this->yaw;
+      if (fabs(this->yaw_angular) < 0.3) {
+        is_turning_wit_gripper = false;
+      }
+    }
+  }
+
+  return true;
 };
 
 bool MainContext::normal_mode_update_mecanum() {
-  this->mecanum->update(
-      std::clamp((int)(this->dir_x * this->speed_multiplier), -32767, 32767),
-      std::clamp((int)(this->dir_y * this->speed_multiplier), -32767, 32767),
-      std::clamp((double)(this->turn), -this->speed_multiplier,
-                 this->speed_multiplier));
+  if (this->rollin) {
+
+    this->mecanum->update(0, 0, 0);
+  } else {
+
+    if (this->imu.get_pitch() > M_PI_2 * 0.3) {
+      this->gripper[0].set_lifter(1024);
+    } else if (this->imu.get_pitch() < -M_PI_2 * 0.3) {
+      this->gripper[1].set_lifter(1024);
+    }
+
+    this->mecanum->update(
+        std::clamp((int)((double)this->dir_x *
+                         (this->speed_multiplier * MAX_SPEED_MULTIPLIER *
+                          this->gripper_speed_multiplier)),
+                   -32767, 32767),
+        std::clamp((int)((double)this->dir_y *
+                         (this->speed_multiplier * MAX_SPEED_MULTIPLIER *
+                          this->gripper_speed_multiplier)),
+                   -32767, 32767),
+        std::clamp((double)(this->turn),
+                   -this->speed_multiplier * MAX_SPEED_MULTIPLIER,
+                   this->speed_multiplier * MAX_SPEED_MULTIPLIER));
+  }
+
   return true;
 };
 
 void MainContext::normal_mode_check_gripper_hotkey() {
+
   switch (this->get_gripper_config()) {
 
   case ANALOG_GRIPPER:
-    this->gripper[0].set_lifter(MAX_THROTTLE_BRAKE - gamepad.get_throttle());
+    this->gripper[0].set_lifter(gamepad.get_throttle());
     this->gripper[0].set_claw(gamepad.is_pressed(Gamepad::ButtonCode::R1));
 
-    this->gripper[1].set_lifter(MAX_THROTTLE_BRAKE - gamepad.get_brake());
+    this->gripper[1].set_lifter(gamepad.get_brake());
     this->gripper[1].set_claw(gamepad.is_pressed(Gamepad::ButtonCode::L1));
     break;
 
-  case TOGGLE_GRIPPER:
+  case GRIPPER_TO_TURN:
+    if (this->gamepad.get_brake() == 0) {
 
-  case NORMALLY_CLOSED_GRIPPER:
+      this->gripper[0].set_lifter(gamepad.get_throttle());
+      this->gripper[0].set_claw(gamepad.is_pressed(Gamepad::ButtonCode::R1));
+    }
+    if (this->gamepad.get_throttle() == 0) {
 
-    this->gripper[0].set_claw(
-        this->gamepad.is_pressed(Gamepad::ButtonCode::R1));
-    this->gripper[0].set_lifter(
-        this->gamepad.is_pressed(Gamepad::ButtonCode::R2) ? 0 : 1024);
+      this->gripper[1].set_lifter(gamepad.get_brake());
+      this->gripper[1].set_claw(gamepad.is_pressed(Gamepad::ButtonCode::L1));
+    }
 
-    this->gripper[1].set_claw(
-        this->gamepad.is_pressed(Gamepad::ButtonCode::L1));
-    this->gripper[1].set_lifter(
-        this->gamepad.is_pressed(Gamepad::ButtonCode::L2) ? 0 : 1024);
     break;
   }
 };

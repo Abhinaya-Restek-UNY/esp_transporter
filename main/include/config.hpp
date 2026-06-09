@@ -7,7 +7,8 @@ enum class DeviceMode : uint8_t {
   CALIBRATE_PID = 1,
   CALIBRATE_IMU = 2,
   SET_OPTION = 3,
-  NORMAL = 4
+  NORMAL = 4,
+  CALIBRATE_DC_MOTOR = 5
 };
 
 enum ControllConfigType {
@@ -29,8 +30,7 @@ enum DirectionControllConfig {
 
 enum GripperControllConfig {
   ANALOG_GRIPPER = 0b001'00'000,
-  TOGGLE_GRIPPER = 0b010'00'000,
-  NORMALLY_CLOSED_GRIPPER = 0b011'00'000
+  GRIPPER_TO_TURN = 0b010'00'000,
 };
 
 #define BR_B GPIO_NUM_19
@@ -54,12 +54,14 @@ enum GripperControllConfig {
 #define IMU_INT GPIO_NUM_34
 
 // NOTE: Value derived from 32768 * 0.1
-#define JOYSTICK_DEADZONE 3276
+#define JOYSTICK_DEADZONE 512
 
 #define IMU_CALIBRATION_LOOP 6
 
 // NOTE: value derived from hypot(32768, 32768) * 0.5
 #define RJOY_ABSOLUTE_ANGLE_DEADZONE 23170
 
-#define BATTERY_VOLTAGE 7.4
+#define BATTERY_VOLTAGE 12.0
 #define DC_MOTOR_VOLTAGE 5.0
+
+#define MAX_SPEED_MULTIPLIER 1
