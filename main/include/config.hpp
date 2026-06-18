@@ -1,5 +1,4 @@
 #pragma once
-#define HORIZONTAL_ANGLE_INCREMENT
 #include "nvs_flash.h"
 #include <string> // #define CALIBRATE_PID
 
@@ -61,7 +60,7 @@ enum GripperControllConfig {
 // NOTE: value derived from hypot(32768, 32768) * 0.5
 #define RJOY_ABSOLUTE_ANGLE_DEADZONE 23170
 
-#define BATTERY_VOLTAGE 12.0
-#define DC_MOTOR_VOLTAGE 5.0
+#define BATTERY_VOLTAGE 12.6
+#define DC_MOTOR_VOLTAGE 5.5
 
 #define MAX_SPEED_MULTIPLIER 1

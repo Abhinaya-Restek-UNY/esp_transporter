@@ -1,12 +1,19 @@
 #include "loop.hpp"
 #include "btstack_run_loop.h"
+#include "esp_adc/adc_cali.h"
+#include "esp_adc/adc_cali_scheme.h"
+#include "esp_adc/adc_oneshot.h"
 #include "esp_system.h"
+#include "freertos/idf_additions.h"
+#include "freertos/projdefs.h"
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 
 MainContext::MainContext()
     : imu(IMU_SDA, IMU_SCL, IMU_INT), device_mode("dev", DeviceMode::NORMAL),
-      Servos(0, 50), Wheels(1, 20'000, BATTERY_VOLTAGE / DC_MOTOR_VOLTAGE),
+      Servos(0, 50),
+      Wheels(1, 20'000, BATTERY_VOLTAGE, BATTERY_VOLTAGE, DC_MOTOR_VOLTAGE),
       controll_config("ctrl", 0x00 |
                                   OrientationControllConfig::INCREMENT_ANGLE |
                                   GripperControllConfig::ANALOG_GRIPPER |
@@ -39,8 +46,18 @@ void MainContext::setup() {
 
   gamepad.start();
 
+  this->setup_adc();
+
   while (!this->gamepad.is_connected()) {
     vTaskDelay(pdMS_TO_TICKS(100));
+  }
+
+  if (this->get_voltages() < 11.3) {
+    printf("%f well\n", this->get_voltages());
+    while (1) {
+      this->gamepad.play_rumble();
+      vTaskDelay(pdMS_TO_TICKS(500));
+    }
   }
 };
 
@@ -71,7 +88,7 @@ bool MainContext::check_super_hotkey() {
 
 void MainContext::update_orientation() {
   imu.get_yaw(&this->yaw, &this->yaw_angular, NULL);
-  if (fabs(imu.get_roll()) > M_PI_2 * .75) {
+  if (fabs(imu.get_roll()) > M_PI_2) {
     this->rollin = true;
   } else {
     this->rollin = false;
@@ -143,6 +160,7 @@ void MainContext::set_controll_config(uint8_t mask, uint8_t value) {
       (this->controll_config.value & (~mask)) | (value & mask);
 
   this->controll_config.save();
+  this->gamepad.play_rumble();
 };
 
 void MainContext::set_orientation_config(OrientationControllConfig config) {
@@ -182,10 +200,6 @@ bool MainContext::normal_mode_check_PS_hotkey() {
   if (this->gamepad.is_pressed(Gamepad::ButtonCode::PS_BUTTON)) {
     if (this->gamepad.is_pressed(Gamepad::ButtonCode::TRIANGLE)) {
       this->gamepad.zero_l_joy();
-    } else if (this->gamepad.is_pressed(Gamepad::ButtonCode::CIRCLE)) {
-      this->imu.offset_yaw();
-      this->imu.get_yaw(&this->yaw, &this->yaw_angular, NULL);
-      this->yaw_target = this->yaw;
     } else if (this->gamepad.is_pressed(Gamepad::ButtonCode::SQUARE)) {
       this->gamepad.play_rumble();
     }
@@ -197,9 +211,9 @@ bool MainContext::normal_mode_check_PS_hotkey() {
 
 bool MainContext::normal_mode_check_speed_multiplier_hotkey() {
   if (this->gamepad.is_pressed(Gamepad::ButtonCode::CIRCLE)) {
-    this->speed_multiplier = 0.350;
+    this->speed_multiplier = 0.40;
   } else if (this->gamepad.is_pressed(Gamepad::ButtonCode::TRIANGLE)) {
-    this->speed_multiplier = 0.50;
+    this->speed_multiplier = 0.750;
   } else if (this->gamepad.is_pressed(Gamepad::ButtonCode::SQUARE)) {
     this->speed_multiplier = 1.0;
   } else {
@@ -214,35 +228,35 @@ bool MainContext::normal_mode_check_orientation_follow_direction() {
       DirectionControllConfig::RELATIVE_DIRECTION) {
     return false;
   }
-  if (this->gamepad.is_pressed(Gamepad::ButtonCode::CROSS)) {
-    if (this->gamepad.get_dpad_x() != 0 || this->gamepad.get_dpad_y() != 0) {
 
-      double move_angle = atan2(gamepad.get_dpad_y(), gamepad.get_dpad_x());
-      double error = wrap_rot(move_angle - yaw);
+  if (this->gamepad.get_dpad_x() != 0 || this->gamepad.get_dpad_y() != 0) {
 
-      if (fabs(error) <= (M_PI / 2.0)) {
-        yaw_target = move_angle;
-      } else {
-        yaw_target = wrap_rot(move_angle + M_PI);
-      }
-      this->turn = pid.update(this->yaw_target, this->yaw, yaw_angular);
-      return true;
+    double move_angle = atan2(gamepad.get_dpad_y(), gamepad.get_dpad_x());
+    double error = wrap_rot(move_angle - yaw);
+
+    if (fabs(error) <= (M_PI / 2.0)) {
+      yaw_target = move_angle;
+    } else {
+      yaw_target = wrap_rot(move_angle + M_PI);
     }
-
-    if (hypot(this->_dir_x, this->_dir_y) > 16384) {
-
-      double move_angle = atan2(this->_dir_y, this->_dir_x);
-      double error = wrap_rot(move_angle - yaw);
-
-      if (fabs(error) <= (M_PI / 2.0)) {
-        yaw_target = move_angle;
-      } else {
-        yaw_target = wrap_rot(move_angle + M_PI);
-      }
-      this->turn = pid.update(this->yaw_target, this->yaw, yaw_angular);
-      return true;
-    }
+    this->turn = pid.update(this->yaw_target, this->yaw, yaw_angular);
+    return true;
   }
+
+  //   if (hypot(this->_dir_x, this->_dir_y) > 16384) {
+  //
+  //     double move_angle = atan2(this->_dir_y, this->_dir_x);
+  //     double error = wrap_rot(move_angle - yaw);
+  //
+  //     if (fabs(error) <= (M_PI / 2.0)) {
+  //       yaw_target = move_angle;
+  //     } else {
+  //       yaw_target = wrap_rot(move_angle + M_PI);
+  //     }
+  //     this->turn = pid.update(this->yaw_target, this->yaw, yaw_angular);
+  //     return true;
+  //   }
+  // }
 
   return false;
 };
@@ -271,7 +285,7 @@ bool MainContext::normal_mode_update_turn() {
     static bool is_turning = false;
 
     if (orientation_input.x != 0) {
-      this->turn = -(double)orientation_input.x / 32768.0;
+      this->turn = -(double)orientation_input.x / 32768.0 * 0.8;
       is_turning = true;
 
     } else if (is_turning) {
@@ -331,21 +345,36 @@ bool MainContext::normal_mode_update_turn() {
 
   if (this->get_gripper_config() == GRIPPER_TO_TURN) {
     double tur = 0;
-    if (this->gamepad.get_brake() != 0) {
 
-      tur = ((this->gamepad.is_pressed(Gamepad::ButtonCode::R2)) -
-             this->gamepad.is_pressed(Gamepad::ButtonCode::R1));
+    if (this->grip_state == GRIP_STATE::NOT_GRIPPIN) {
+      if (this->gamepad.get_brake() != 0 ||
+          this->gamepad.is_pressed(Gamepad::ButtonCode::L1)) {
+        this->grip_state = GRIP_STATE::LT;
+      } else if (this->gamepad.get_throttle() != 0 ||
+                 this->gamepad.is_pressed(Gamepad::ButtonCode::R1)) {
+        this->grip_state = GRIP_STATE::RT;
+      }
+    } else if (this->gamepad.get_brake() == 0 &&
+               this->gamepad.get_throttle() == 0 &&
+               !this->gamepad.is_pressed(Gamepad::ButtonCode::L1) &&
+               !this->gamepad.is_pressed(Gamepad::ButtonCode::R1)) {
+
+      this->grip_state = GRIP_STATE::NOT_GRIPPIN;
     }
 
-    if (this->gamepad.get_throttle() != 0) {
-      tur = ((this->gamepad.is_pressed(Gamepad::ButtonCode::L2)) -
-             this->gamepad.is_pressed(Gamepad::ButtonCode::L1));
+    if (this->grip_state == GRIP_STATE::LT) {
+      tur = ((this->gamepad.is_pressed(Gamepad::ButtonCode::R1)) -
+             this->gamepad.is_pressed(Gamepad::ButtonCode::R2));
+    } else if (this->grip_state == GRIP_STATE::RT) {
+      tur = ((this->gamepad.is_pressed(Gamepad::ButtonCode::L1)) -
+             this->gamepad.is_pressed(Gamepad::ButtonCode::L2));
     }
 
-    if (this->gamepad.get_brake() != 0 || this->gamepad.get_throttle() != 0) {
-      this->gripper_speed_multiplier = 0.5;
-    } else {
+    if (this->grip_state == GRIP_STATE::NOT_GRIPPIN) {
+
       this->gripper_speed_multiplier = 1.0;
+    } else {
+      this->gripper_speed_multiplier = 0.4;
     }
 
     static bool is_turning_wit_gripper = false;
@@ -368,25 +397,41 @@ bool MainContext::normal_mode_update_turn() {
 };
 
 bool MainContext::normal_mode_update_mecanum() {
+  // NOTE: CLAMP SO IT DOESNT CHASE STABLE SPEED BELOW SAFE VOLTAGE IN THE EVENT
+  // OF VOLTAGE DROP
+  float voltage =
+      std::clamp(this->get_voltages(), 11.3f, (float)BATTERY_VOLTAGE);
+  this->Wheels.update_voltage(voltage);
+  // printf("Voltages %f\n", voltage);
+  if (this->fallin_state == FALLIN_STATE::FORWARD) {
+    this->gripper[0].set_lifter(1024);
+  } else if (this->fallin_state == FALLIN_STATE::BACKWARD) {
+    this->gripper[1].set_lifter(1024);
+  }
+
   if (this->rollin) {
 
     this->mecanum->update(0, 0, 0);
   } else {
 
-    if (this->imu.get_pitch() > M_PI_2 * 0.3) {
-      this->gripper[0].set_lifter(1024);
-    } else if (this->imu.get_pitch() < -M_PI_2 * 0.3) {
-      this->gripper[1].set_lifter(1024);
+    double pitch = this->imu.get_pitch();
+    if (pitch > M_PI_2 * 0.3) {
+      this->fallin_state = FALLIN_STATE::FORWARD;
+
+      // this->gripper[0].set_lifter(1024);
+    } else if (pitch < -M_PI_2 * 0.3) {
+      this->fallin_state = FALLIN_STATE::BACKWARD;
+      // this->gripper[1].set_lifter(1024);
+    } else if (fabs(pitch) < M_PI_2 * 0.1) {
+      this->fallin_state = FALLIN_STATE::NOT_FALLIN;
     }
 
     this->mecanum->update(
-        std::clamp((int)((double)this->dir_x *
-                         (this->speed_multiplier * MAX_SPEED_MULTIPLIER *
-                          this->gripper_speed_multiplier)),
+        std::clamp((int)((double)this->dir_x * speed_multiplier *
+                         gripper_speed_multiplier),
                    -32767, 32767),
-        std::clamp((int)((double)this->dir_y *
-                         (this->speed_multiplier * MAX_SPEED_MULTIPLIER *
-                          this->gripper_speed_multiplier)),
+        std::clamp((int)((double)this->dir_y * speed_multiplier *
+                         gripper_speed_multiplier),
                    -32767, 32767),
         std::clamp((double)(this->turn),
                    -this->speed_multiplier * MAX_SPEED_MULTIPLIER,
@@ -409,13 +454,11 @@ void MainContext::normal_mode_check_gripper_hotkey() {
     break;
 
   case GRIPPER_TO_TURN:
-    if (this->gamepad.get_brake() == 0) {
-
+    if (this->grip_state != GRIP_STATE::LT) {
       this->gripper[0].set_lifter(gamepad.get_throttle());
       this->gripper[0].set_claw(gamepad.is_pressed(Gamepad::ButtonCode::R1));
     }
-    if (this->gamepad.get_throttle() == 0) {
-
+    if (this->grip_state != GRIP_STATE::RT) {
       this->gripper[1].set_lifter(gamepad.get_brake());
       this->gripper[1].set_claw(gamepad.is_pressed(Gamepad::ButtonCode::L1));
     }
@@ -423,3 +466,66 @@ void MainContext::normal_mode_check_gripper_hotkey() {
     break;
   }
 };
+
+void MainContext::setup_adc() {
+  adc_oneshot_unit_init_cfg_t init_config1 = {
+      .unit_id = ADC_UNIT_1,
+      .ulp_mode = ADC_ULP_MODE_DISABLE,
+  };
+  ESP_ERROR_CHECK(adc_oneshot_new_unit(&init_config1, &adc1_handle));
+
+  adc_oneshot_chan_cfg_t config = {
+      .atten = ADC_ATTEN_DB_12,
+      .bitwidth = ADC_BITWIDTH_DEFAULT,
+  };
+
+  ESP_ERROR_CHECK(
+      adc_oneshot_config_channel(adc1_handle, ADC_CHANNEL_7, &config));
+
+  adc_cali_line_fitting_config_t cali_config = {
+      .unit_id = ADC_UNIT_1,
+      .atten = ADC_ATTEN_DB_12,
+      .bitwidth = ADC_BITWIDTH_DEFAULT,
+  };
+
+  esp_err_t cali_ret =
+      adc_cali_create_scheme_line_fitting(&cali_config, &cali_handle);
+  if (cali_ret == ESP_OK) {
+    calibrated = true;
+  }
+
+  int raw_value = 0;
+  int voltage_mv = 0;
+
+  // Read raw digital value (0 - 4095)
+  ESP_ERROR_CHECK(adc_oneshot_read(adc1_handle, ADC_CHANNEL_7, &raw_value));
+
+  if (calibrated) {
+    ESP_ERROR_CHECK(
+        adc_cali_raw_to_voltage(cali_handle, raw_value, &voltage_mv));
+  }
+
+  this->prev_voltage = voltage_mv * this->voltage_scale;
+};
+
+inline float applyLPF(float current_raw, float filtered_prev, float alpha) {
+  return (alpha * current_raw) + ((1.0f - alpha) * filtered_prev);
+}
+
+float MainContext::get_voltages() {
+  int raw_value = 0;
+  int voltage_mv = 0;
+
+  // Read raw digital value (0 - 4095)
+  ESP_ERROR_CHECK(adc_oneshot_read(adc1_handle, ADC_CHANNEL_7, &raw_value));
+
+  if (calibrated) {
+    ESP_ERROR_CHECK(
+        adc_cali_raw_to_voltage(cali_handle, raw_value, &voltage_mv));
+  }
+
+  this->prev_voltage =
+      applyLPF(voltage_mv * this->voltage_scale, this->prev_voltage, 0.02);
+
+  return this->prev_voltage;
+}

@@ -2,10 +2,12 @@
 #include "Gripper.hpp"
 #include "IMU.hpp"
 #include "Mecanum.hpp"
-#include "MotorHub.hpp"
+#include "MotorManager.hpp"
 #include "PID.hpp"
 #include "PresistentConfig.hpp"
+#include "ServoManager.hpp"
 #include "config.hpp"
+#include "esp_adc/adc_oneshot.h"
 
 inline double wrap_rot(double yaw) {
 
@@ -42,10 +44,8 @@ public:
   double dir_x = 0;
   double dir_y = 0;
   double yaw = 0;
-  double yaw_angular = 0;
   double speed_multiplier = 1.0;
-  double gripper_speed_multiplier = 1.0;
-  bool rollin = false;
+  double yaw_angular = 0;
 
   bool check_super_hotkey();
 
@@ -72,10 +72,30 @@ public:
   GripperControllConfig get_gripper_config();
 
 private:
+  enum GRIP_STATE { RT, LT, NOT_GRIPPIN };
+  enum FALLIN_STATE { NOT_FALLIN, FORWARD, BACKWARD };
+
+  bool calibrated = false;
+  adc_oneshot_unit_handle_t adc1_handle;
+  adc_cali_handle_t cali_handle = NULL;
+  void setup_adc();
+  float get_voltages();
+
+  double gripper_speed_multiplier = 1.0;
+  bool rollin = false;
+
+  float prev_voltage = 0;
+
+  double voltage_scale = 0.004307851239669421;
+
+  FALLIN_STATE fallin_state = FALLIN_STATE::NOT_FALLIN;
+
+  GRIP_STATE grip_state = GRIP_STATE::NOT_GRIPPIN;
+
   void set_controll_config(uint8_t mask, uint8_t value);
   MainContext();
-  MotorHub Servos;
-  MotorHub Wheels;
+  ServoManager Servos;
+  MotorManager Wheels;
 
   Motor *mt_br;
   Motor *mt_bl;

@@ -156,15 +156,12 @@ extern "C" void app_main(void) {
       while (!ctx.check_super_hotkey()) {
         if (ctx.gamepad.is_just_pressed(Gamepad::ButtonCode::CROSS)) {
           ctx.set_orientation_config(OrientationControllConfig::ABSOLUTE_ANGLE);
-          ctx.gamepad.play_rumble();
         } else if (ctx.gamepad.is_just_pressed(Gamepad::ButtonCode::SQUARE)) {
           ctx.set_orientation_config(
               OrientationControllConfig::RELATIVE_INCREMENT_ANGLE);
-          ctx.gamepad.play_rumble();
         } else if (ctx.gamepad.is_just_pressed(Gamepad::ButtonCode::TRIANGLE)) {
           ctx.set_orientation_config(
               OrientationControllConfig::INCREMENT_ANGLE);
-          ctx.gamepad.play_rumble();
         }
 
         if (ctx.gamepad.is_just_pressed(Gamepad::L1)) {
@@ -188,13 +185,34 @@ extern "C" void app_main(void) {
       const TickType_t frequency = pdMS_TO_TICKS(10);
 
       while (!ctx.check_super_hotkey()) {
+
         if (ctx.get_direction_config() ==
             DirectionControllConfig::ABSOLUTE_DIRECTION) {
           ctx.update_orientation();
         }
+
         if (!ctx.normal_mode_check_PS_hotkey()) {
           ctx.normal_mode_check_gripper_hotkey();
           ctx.normal_mode_check_speed_multiplier_hotkey();
+        }
+
+        if (ctx.gamepad.is_pressed(Gamepad::ButtonCode::SHARE) &&
+            ctx.gamepad.is_pressed(Gamepad::ButtonCode::OPTIONS) &&
+            ctx.gamepad.is_pressed(Gamepad::ButtonCode::L1) &&
+            ctx.gamepad.is_pressed(Gamepad::ButtonCode::R1)) {
+          ctx.gamepad.play_rumble();
+          ctx.gamepad.unlock();
+          break;
+        } else if (ctx.gamepad.is_pressed(Gamepad::ButtonCode::SHARE) &&
+                   ctx.gamepad.is_pressed(Gamepad::ButtonCode::OPTIONS)) {
+          ctx.gamepad.play_rumble();
+          ctx.gamepad.lock();
+        }
+
+        if (ctx.gamepad.is_pressed(Gamepad::ButtonCode::CROSS)) {
+          ctx.imu.offset_yaw();
+          ctx.imu.get_yaw(&ctx.yaw, &ctx.yaw_angular, NULL);
+          ctx.yaw_target = ctx.yaw;
         }
 
         ctx.normal_mode_update_input_joy();
