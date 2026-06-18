@@ -19,6 +19,12 @@ IMU::IMU(gpio_num_t SDA, gpio_num_t SCL, gpio_num_t interrupt)
   // this->offset.remove();
 }
 
+void IMU::offset_pitchroll() {
+
+  this->pitch_offset = this->pitch;
+  this->roll_offset = this->roll;
+}
+
 int8_t IMU::start() {
 
   if (init_hardware() != 0)
@@ -125,6 +131,7 @@ void IMU::mpu_task(IMU *context) {
 
     context->pitch = context->yawPitchRoll[1];
     context->roll = context->yawPitchRoll[2];
+
     context->last_update = time_us;
   }
 }
@@ -148,8 +155,8 @@ void IMU::get_yaw(double *yaw, double *angular_yaw, uint64_t *timestamp) {
   }
 };
 
-double IMU::get_pitch() { return this->pitch.load(); }
-double IMU::get_roll() { return this->roll.load(); }
+double IMU::get_pitch() { return this->pitch.load() - this->pitch_offset; }
+double IMU::get_roll() { return this->roll.load() - this->roll_offset; }
 
 void IMU::offset_yaw() { this->yaw_offset = this->yaw; }
 double IMU::lpf(double raw, double prev, double alpha) {

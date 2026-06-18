@@ -61,6 +61,7 @@ public:
 
   void offset_yaw();
 
+  void offset_pitchroll();
   int8_t start_and_calibrate(uint8_t calibration_loop);
 
 private:
@@ -71,6 +72,7 @@ private:
   gpio_num_t SDA_pin;       ///< I2C SDA pin
   gpio_num_t SCL_pin;       ///< I2C SCL pin
   gpio_num_t interrupt_pin; ///< MPU6050 external interrupt pin
+                            ///
 
   // --- MPU Internal State Variables ---
   uint16_t packetSize = 42; ///< Expected DMP packet size
@@ -129,4 +131,6 @@ private:
 
   PresistentConfig<OffsetData> offset;
   double yaw_offset = 0;
+  double pitch_offset = 0;
+  double roll_offset = 0;
 };
