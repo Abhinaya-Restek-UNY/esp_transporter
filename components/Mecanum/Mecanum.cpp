@@ -1,4 +1,5 @@
 #include "Mecanum.hpp"
+#include <algorithm>
 #include <cmath>
 
 Mecanum::Mecanum(Motor *fr, Motor *fl, Motor *br, Motor *bl)
@@ -7,40 +8,21 @@ Mecanum::Mecanum(Motor *fr, Motor *fl, Motor *br, Motor *bl)
       };
 
 void Mecanum::update(int16_t x, int16_t y, double turn) {
+  double norm_x = x / 32767.0;
+  double norm_y = y / 32767.0;
 
-  this->hypot = std::hypot(x, y);
+  fl_val = norm_y + norm_x + turn;
+  fr_val = norm_y - norm_x - turn;
+  bl_val = norm_y - norm_x + turn;
+  br_val = norm_y + norm_x - turn;
 
-  double cosval = 0;
-  double sinval = 0;
-  if (this->hypot > 0.0) {
-    cosval = (double)x / hypot;
-    sinval = (double)y / hypot;
-  }
+  double max_wheel =
+      std::max({1.0, fabs(fl_val), fabs(fr_val), fabs(bl_val), fabs(br_val)});
 
-  this->power = hypot / 32767.0;
+  double scale = 32767.0 / max_wheel;
 
-  fl_val = ((sinval + cosval) * power + turn);
-  fr_val = ((sinval - cosval) * power - turn);
-  bl_val = ((sinval - cosval) * power + turn);
-  br_val = ((sinval + cosval) * power - turn);
-
-  double max_wheel = fabs(fl_val);
-  if (fabs(fr_val) > max_wheel)
-    max_wheel = fabs(fr_val);
-  if (fabs(bl_val) > max_wheel)
-    max_wheel = fabs(bl_val);
-  if (fabs(br_val) > max_wheel)
-    max_wheel = fabs(br_val);
-
-  if (max_wheel > 1.0) {
-    fl_val /= max_wheel;
-    fr_val /= max_wheel;
-    bl_val /= max_wheel;
-    br_val /= max_wheel;
-  }
-
-  this->fl->set_direction(fl_val * 32767.0);
-  this->fr->set_direction(fr_val * 32767.0);
-  this->bl->set_direction(bl_val * 32767.0);
-  this->br->set_direction(br_val * 32767.0);
-};
+  this->fl->set_direction(fl_val * scale);
+  this->fr->set_direction(fr_val * scale);
+  this->bl->set_direction(bl_val * scale);
+  this->br->set_direction(br_val * scale);
+}
