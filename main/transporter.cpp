@@ -63,26 +63,6 @@ extern "C" void app_main(void) {
 
         ctx.normal_mode_update_input_joy();
 
-        // if (ctx.gamepad.is_pressed(Gamepad::ButtonCode::CIRCLE)) {
-        //   ctx.mecanum->correction.value.vertical += 0.0001;
-        //
-        // } else if (ctx.gamepad.is_pressed(Gamepad::ButtonCode::SQUARE)) {
-        //   ctx.mecanum->correction.value.vertical -= 0.0001;
-        // }
-        //
-        // if (ctx.gamepad.is_pressed(Gamepad::ButtonCode::TRIANGLE)) {
-        //   ctx.mecanum->correction.value.vertical += 0.0001;
-        //
-        // } else if (ctx.gamepad.is_pressed(Gamepad::ButtonCode::CROSS)) {
-        //   ctx.mecanum->correction.value.vertical -= 0.0001;
-        // }
-        // if (ctx.gamepad.is_just_pressed(Gamepad::OPTIONS)) {
-        //   ctx.mecanum->correction.save();
-        //
-        // } else if (ctx.gamepad.is_just_pressed(Gamepad::ButtonCode::SHARE)) {
-        //   ctx.mecanum->correction.value = {0, 0};
-        // }
-        //
         ctx.normal_mode_update_turn();
 
         ctx.normal_mode_update_mecanum();
@@ -153,6 +133,11 @@ extern "C" void app_main(void) {
       TickType_t lastwaketime = xTaskGetTickCount();
       const TickType_t frequency = pdMS_TO_TICKS(10);
 
+      ctx.gripper[0]->set_claw(false);
+      ctx.gripper[1]->set_claw(false);
+      ctx.gripper[0]->set_lifter(1024);
+      ctx.gripper[1]->set_lifter(1024);
+
       while (!ctx.check_super_hotkey()) {
         if (ctx.gamepad.is_just_pressed(Gamepad::ButtonCode::CROSS)) {
           ctx.set_orientation_config(OrientationControllConfig::ABSOLUTE_ANGLE);
@@ -176,6 +161,45 @@ extern "C" void app_main(void) {
           ctx.set_direction_config(DirectionControllConfig::ABSOLUTE_DIRECTION);
         }
 
+        if (ctx.gamepad.get_dpad_x()) {
+          ctx.gripper[0]->max_angle.value +=
+              (float)ctx.gamepad.get_dpad_x() / 32767.0 * 0.1;
+
+          if (ctx.gripper[0]->max_angle.value < 0) {
+            ctx.gripper[0]->max_angle.value = 0;
+          }
+
+          if (ctx.gripper[0]->max_angle.value > 180) {
+            ctx.gripper[0]->max_angle.value = 180;
+          }
+          printf("grip[0] %f\n", ctx.gripper[0]->max_angle.value);
+
+          ctx.gripper[0]->set_claw(false);
+        }
+
+        if (ctx.gamepad.get_dpad_y()) {
+          ctx.gripper[1]->max_angle.value +=
+              (float)ctx.gamepad.get_dpad_y() / 32767.0 * 0.1;
+
+          if (ctx.gripper[1]->max_angle.value < 0) {
+            ctx.gripper[1]->max_angle.value = 0;
+          }
+
+          if (ctx.gripper[1]->max_angle.value > 180) {
+            ctx.gripper[1]->max_angle.value = 180;
+          }
+
+          printf("grip[1] %f\n", ctx.gripper[0]->max_angle.value);
+
+          ctx.gripper[1]->set_claw(false);
+        }
+
+        if (ctx.gamepad.is_just_pressed(Gamepad::ButtonCode::OPTIONS)) {
+
+          ctx.gripper[1]->max_angle.save();
+          ctx.gripper[0]->max_angle.save();
+        }
+
         vTaskDelayUntil(&lastwaketime, frequency);
       }
     } else if (ctx.device_mode.value == DeviceMode::NORMAL) {
@@ -194,25 +218,28 @@ extern "C" void app_main(void) {
         if (!ctx.normal_mode_check_PS_hotkey()) {
           ctx.normal_mode_check_gripper_hotkey();
           ctx.normal_mode_check_speed_multiplier_hotkey();
-        }
+          if (ctx.gamepad.is_pressed(Gamepad::ButtonCode::SHARE) &&
+              ctx.gamepad.is_pressed(Gamepad::ButtonCode::OPTIONS) &&
+              ctx.gamepad.is_pressed(Gamepad::ButtonCode::L1) &&
+              ctx.gamepad.is_pressed(Gamepad::ButtonCode::R1)) {
+            ctx.gamepad.play_rumble();
+            ctx.gamepad.unlock();
+            break;
+          } else if (ctx.gamepad.is_pressed(Gamepad::ButtonCode::SHARE) &&
+                     ctx.gamepad.is_pressed(Gamepad::ButtonCode::OPTIONS)) {
+            ctx.gamepad.play_rumble();
+            ctx.gamepad.lock();
+          }
 
-        if (ctx.gamepad.is_pressed(Gamepad::ButtonCode::SHARE) &&
-            ctx.gamepad.is_pressed(Gamepad::ButtonCode::OPTIONS) &&
-            ctx.gamepad.is_pressed(Gamepad::ButtonCode::L1) &&
-            ctx.gamepad.is_pressed(Gamepad::ButtonCode::R1)) {
-          ctx.gamepad.play_rumble();
-          ctx.gamepad.unlock();
-          break;
-        } else if (ctx.gamepad.is_pressed(Gamepad::ButtonCode::SHARE) &&
-                   ctx.gamepad.is_pressed(Gamepad::ButtonCode::OPTIONS)) {
-          ctx.gamepad.play_rumble();
-          ctx.gamepad.lock();
-        }
+          if (ctx.gamepad.is_pressed(Gamepad::ButtonCode::CROSS)) {
+            ctx.imu.offset_yaw();
+            ctx.imu.get_yaw(&ctx.yaw, &ctx.yaw_angular, NULL);
+            ctx.yaw_target = ctx.yaw;
+          }
 
-        if (ctx.gamepad.is_pressed(Gamepad::ButtonCode::CROSS)) {
-          ctx.imu.offset_yaw();
-          ctx.imu.get_yaw(&ctx.yaw, &ctx.yaw_angular, NULL);
-          ctx.yaw_target = ctx.yaw;
+          if (ctx.gamepad.is_pressed(Gamepad::ButtonCode::CIRCLE)) {
+            ctx.imu.offset_pitchroll();
+          }
         }
 
         ctx.normal_mode_update_input_joy();

@@ -25,8 +25,8 @@ MainContext::MainContext()
   Servo *claw2 = Servos.create_servo(GPIO_NUM_4, 180, 0.5, 2.5);
   Servo *claw1 = Servos.create_servo(GPIO_NUM_15, 180, 0.5, 2.5);
 
-  this->gripper[0] = Gripper(claw1, lifter1, pdMS_TO_TICKS(500));
-  this->gripper[1] = Gripper(claw2, lifter2, pdMS_TO_TICKS(500));
+  this->gripper[0] = new Gripper(claw1, lifter1, 90, "g1");
+  this->gripper[1] = new Gripper(claw2, lifter2, 90, "g2");
 
   this->mt_br = Wheels.create_motor(BR_A, BR_B, BR_PWM);
   this->mt_bl = Wheels.create_motor(BL_A, BL_B, BL_PWM);
@@ -210,10 +210,8 @@ bool MainContext::normal_mode_check_PS_hotkey() {
 }
 
 bool MainContext::normal_mode_check_speed_multiplier_hotkey() {
-  if (this->gamepad.is_pressed(Gamepad::ButtonCode::CIRCLE)) {
-    this->speed_multiplier = 0.40;
-  } else if (this->gamepad.is_pressed(Gamepad::ButtonCode::TRIANGLE)) {
-    this->speed_multiplier = 0.750;
+  if (this->gamepad.is_pressed(Gamepad::ButtonCode::TRIANGLE)) {
+    this->speed_multiplier = 0.50;
   } else if (this->gamepad.is_pressed(Gamepad::ButtonCode::SQUARE)) {
     this->speed_multiplier = 1.0;
   } else {
@@ -242,21 +240,6 @@ bool MainContext::normal_mode_check_orientation_follow_direction() {
     this->turn = pid.update(this->yaw_target, this->yaw, yaw_angular);
     return true;
   }
-
-  //   if (hypot(this->_dir_x, this->_dir_y) > 16384) {
-  //
-  //     double move_angle = atan2(this->_dir_y, this->_dir_x);
-  //     double error = wrap_rot(move_angle - yaw);
-  //
-  //     if (fabs(error) <= (M_PI / 2.0)) {
-  //       yaw_target = move_angle;
-  //     } else {
-  //       yaw_target = wrap_rot(move_angle + M_PI);
-  //     }
-  //     this->turn = pid.update(this->yaw_target, this->yaw, yaw_angular);
-  //     return true;
-  //   }
-  // }
 
   return false;
 };
@@ -334,7 +317,6 @@ bool MainContext::normal_mode_update_turn() {
       }
     }
 
-    // 2. Update PID with the safely bounded target
     this->turn =
         this->pid.update(this->yaw_target, this->yaw, this->yaw_angular);
     break;
@@ -404,9 +386,9 @@ bool MainContext::normal_mode_update_mecanum() {
   this->Wheels.update_voltage(voltage);
   // printf("Voltages %f\n", voltage);
   if (this->fallin_state == FALLIN_STATE::FORWARD) {
-    this->gripper[0].set_lifter(1024);
+    this->gripper[0]->set_lifter(1024);
   } else if (this->fallin_state == FALLIN_STATE::BACKWARD) {
-    this->gripper[1].set_lifter(1024);
+    this->gripper[1]->set_lifter(1024);
   }
 
   if (this->rollin) {
@@ -446,21 +428,21 @@ void MainContext::normal_mode_check_gripper_hotkey() {
   switch (this->get_gripper_config()) {
 
   case ANALOG_GRIPPER:
-    this->gripper[0].set_lifter(gamepad.get_throttle());
-    this->gripper[0].set_claw(gamepad.is_pressed(Gamepad::ButtonCode::R1));
+    this->gripper[0]->set_lifter(gamepad.get_throttle());
+    this->gripper[0]->set_claw(gamepad.is_pressed(Gamepad::ButtonCode::R1));
 
-    this->gripper[1].set_lifter(gamepad.get_brake());
-    this->gripper[1].set_claw(gamepad.is_pressed(Gamepad::ButtonCode::L1));
+    this->gripper[1]->set_lifter(gamepad.get_brake());
+    this->gripper[1]->set_claw(gamepad.is_pressed(Gamepad::ButtonCode::L1));
     break;
 
   case GRIPPER_TO_TURN:
     if (this->grip_state != GRIP_STATE::LT) {
-      this->gripper[0].set_lifter(gamepad.get_throttle());
-      this->gripper[0].set_claw(gamepad.is_pressed(Gamepad::ButtonCode::R1));
+      this->gripper[0]->set_lifter(gamepad.get_throttle());
+      this->gripper[0]->set_claw(gamepad.is_pressed(Gamepad::ButtonCode::R1));
     }
     if (this->grip_state != GRIP_STATE::RT) {
-      this->gripper[1].set_lifter(gamepad.get_brake());
-      this->gripper[1].set_claw(gamepad.is_pressed(Gamepad::ButtonCode::L1));
+      this->gripper[1]->set_lifter(gamepad.get_brake());
+      this->gripper[1]->set_claw(gamepad.is_pressed(Gamepad::ButtonCode::L1));
     }
 
     break;

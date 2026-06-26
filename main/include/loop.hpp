@@ -28,7 +28,7 @@ public:
 
   void setup();
   Mecanum *mecanum;
-  Gripper gripper[2];
+  Gripper *gripper[2];
 
   // NOTE: Face forward at start.
   double yaw_target = M_PI_2;
