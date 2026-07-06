@@ -5,3 +5,6 @@
 [submodule "external/mpu6050"]
 	path = external/mpu6050
 	url = https://github.com/Abhinaya-Restek-UNY/esp_mpu6050.git
+[submodule "external/pwmmanager"]
+	path = external/pwmmanager
+	url = https://github.com/Abhinaya-Restek-UNY/esp_PWMManager.git
