@@ -1,0 +1,3 @@
+dependencies:
+  esp_PresistentConfig:
+    git: https://github.com/Abhinaya-Restek-UNY/esp_PresistentConfig.git

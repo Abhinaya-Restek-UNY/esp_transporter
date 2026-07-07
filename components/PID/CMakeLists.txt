@@ -1,4 +1,4 @@
 idf_component_register(SRCS "PID.cpp"
     INCLUDE_DIRS "."
-    REQUIRES PresistentConfig
+    REQUIRES esp_PresistentConfig
 )

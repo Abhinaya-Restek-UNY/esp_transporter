@@ -1,0 +1,9 @@
+dependencies:
+  esp_Gamepad:
+    git: https://github.com/Abhinaya-Restek-UNY/esp_Gamepad.git
+
+  esp_PWMManager:
+    git: https://github.com/Abhinaya-Restek-UNY/esp_PWMManager.git
+
+  esp_PresistentConfig:
+    git: https://github.com/Abhinaya-Restek-UNY/esp_PresistentConfig.git

@@ -2,3 +2,4 @@ build
 sdkconfig.old
 .cache
 build.clang
+managed_components

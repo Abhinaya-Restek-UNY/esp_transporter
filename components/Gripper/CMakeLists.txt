@@ -1,4 +1,4 @@
 idf_component_register(SRCS "Gripper.cpp"
     INCLUDE_DIRS "."
-    REQUIRES pwmmanager Panic esp_timer PresistentConfig
+    REQUIRES esp_PWMManager Panic esp_timer esp_PresistentConfig
 )

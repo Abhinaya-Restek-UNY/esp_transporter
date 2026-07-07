@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.16)
 set(BLUEPAD32_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/external/bluepad32)
 set(BTSTACK_ROOT ${BLUEPAD32_ROOT}/external/btstack)
 
-set(EXTRA_COMPONENT_DIRS ${BLUEPAD32_ROOT}/src/components external/mpu6050/components external/pwmmanager)
+set(EXTRA_COMPONENT_DIRS ${BLUEPAD32_ROOT}/src/components external/mpu6050/components)
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(transporter)
